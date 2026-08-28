@@ -1,0 +1,40 @@
+/* Shell only – full layout, type pairing and the signature element are Phase 8 work per
+   docs/PLAN.md, built against docs/BRAND.md's full brief. This file exists so the placeholder
+   page doesn't render as unstyled browser default while nothing else is built yet. */
+
+:root {
+  --ink: #0B0D0C;
+  --panel: #14211A;
+  --panel-raised: #1C2E24;
+  --hairline: #2B3A31;
+  --parchment: #EDE6D6;
+  --parchment-dim: #8B9A8F;
+  --brass: #C9A24B;
+  --brass-dim: #7A6A3D;
+}
+
+body {
+  background: var(--ink);
+  color: var(--parchment);
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+header {
+  padding: 2rem 1.5rem 1rem;
+  border-bottom: 1px solid var(--hairline);
+}
+
+header h1 {
+  color: var(--brass);
+  margin: 0;
+}
+
+header p {
+  color: var(--parchment-dim);
+  margin: 0.25rem 0 0;
+}
+
+main {
+  padding: 1.5rem;
+}
