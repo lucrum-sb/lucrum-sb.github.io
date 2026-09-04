@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Link your account – Lucrum</title>
+  <script src="../js/theme.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="../css/main.css" />
+  <link rel="stylesheet" href="../css/link.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="site-header">
+      <div class="brand">
+        <h1><a href="../index.html">Lucrum</a></h1>
+        <p>Bazaar intelligence for Hypixel SkyBlock</p>
+      </div>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle colour theme">
+        Dark mode
+      </button>
+    </header>
+
+    <main>
+      <section class="hero">
+        <h2>Link your account</h2>
+        <p>
+          This confirms the code shown by <code>/lucrum link</code> in game against your
+          Minecraft identity, so your mod-side positions and this site's public profile refer
+          to the same account.
+        </p>
+      </section>
+
+      <div class="card link-card" id="link-card">
+        <div class="link-status">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-text">Checking link status&hellip;</span>
+        </div>
+
+        <div id="signin-step" class="link-step" hidden>
+          <h3>Sign in with MC-ID</h3>
+          <p class="dim">Sign-in redirects to the same MC-ID identity provider SeyVault uses.</p>
+          <button class="btn btn-primary" id="signin-btn" type="button">Sign in with MC-ID</button>
+          <p class="error-text" id="signin-error" hidden></p>
+        </div>
+
+        <div id="code-step" class="link-step" hidden>
+          <h3>Confirm your code</h3>
+          <p class="dim">Enter the code <code>/lucrum link</code> showed in game.</p>
+          <form id="code-form">
+            <input
+              type="text"
+              id="code-input"
+              class="code-input num"
+              placeholder="XXXX-XXXX"
+              maxlength="9"
+              autocomplete="off"
+              autocapitalize="characters"
+            />
+            <button class="btn btn-primary" type="submit">Link account</button>
+          </form>
+          <p class="error-text" id="code-error" hidden></p>
+        </div>
+
+        <div id="linked-step" class="link-step" hidden>
+          <h3>Linked</h3>
+          <p class="dim">Account <span class="num" id="linked-uuid"></span> is now linked.</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <p><a href="../index.html">Back to Lucrum</a></p>
+    </footer>
+  </div>
+
+  <script type="module" src="../js/link.js"></script>
+</body>
+</html>

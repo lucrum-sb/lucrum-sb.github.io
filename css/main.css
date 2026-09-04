@@ -1,40 +1,324 @@
-/* Shell only – full layout, type pairing and the signature element are Phase 8 work per
-   docs/PLAN.md, built against docs/BRAND.md's full brief. This file exists so the placeholder
-   page doesn't render as unstyled browser default while nothing else is built yet. */
+/* Lucrum – visual identity. Token system, component patterns and motion rules from
+   docs/BRAND.md. This is a standalone stylesheet – it does not import or reuse SeyVault's CSS.
+
+   Direction: private trading desk, not game HUD. Light by default, dark by explicit toggle.
+   Own type pairing (Fraunces display / Inter body+data), own accent (aged brass, not acid-green,
+   not vermilion, not terracotta), own radius (6-8px, not SeyVault's 14px), no rarity colours. */
+
+/* --- Tokens --------------------------------------------------------------------------------- */
 
 :root {
+  --ink: #F7F5EF;
+  --panel: #FFFFFF;
+  --panel-raised: #EFEBDF;
+  --hairline: #DCD5C4;
+  --text: #1B1C18;
+  --text-dim: #6B6A5E;
+  --brass: #9C7A2E;
+  --brass-dim: #C4AD75;
+
+  --gain: #3F7A54;
+  --loss: #B0453A;
+  --live: var(--brass);
+
+  --radius: 8px;
+  --radius-sm: 4px;
+  --transition: 150ms ease-out;
+}
+
+:root[data-theme="dark"] {
   --ink: #0B0D0C;
   --panel: #14211A;
   --panel-raised: #1C2E24;
   --hairline: #2B3A31;
-  --parchment: #EDE6D6;
-  --parchment-dim: #8B9A8F;
+  --text: #EDE6D6;
+  --text-dim: #8B9A8F;
   --brass: #C9A24B;
   --brass-dim: #7A6A3D;
 }
 
+/* --- Base ------------------------------------------------------------------------------------ */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light dark;
+}
+
 body {
+  margin: 0;
   background: var(--ink);
-  color: var(--parchment);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  transition: background var(--transition), color var(--transition);
+}
+
+h1, h2, h3 {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   margin: 0;
-  font-family: system-ui, sans-serif;
+  color: var(--text);
 }
 
-header {
-  padding: 2rem 1.5rem 1rem;
-  border-bottom: 1px solid var(--hairline);
-}
-
-header h1 {
+a {
   color: var(--brass);
-  margin: 0;
 }
 
-header p {
-  color: var(--parchment-dim);
-  margin: 0.25rem 0 0;
+/* Tabular numerals for every price, table and P&L figure – docs/BRAND.md's ledger rule.
+   Apply this class anywhere a number appears; never let a price render in proportional figures. */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+
+/* --- Layout shell ------------------------------------------------------------------------------ */
+
+.shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+header.site-header {
+  padding: 2.5rem 0 1.5rem;
+  border-bottom: 1px solid var(--hairline);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+header.site-header .brand h1 {
+  font-size: 1.75rem;
+  color: var(--brass);
+}
+
+header.site-header .brand p {
+  margin: 0.35rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.95rem;
 }
 
 main {
+  padding: 3rem 0 4rem;
+}
+
+footer.site-footer {
+  padding: 1.5rem 0 3rem;
+  border-top: 1px solid var(--hairline);
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+footer.site-footer a {
+  color: var(--text-dim);
+  text-decoration: underline;
+}
+
+/* --- Theme toggle -------------------------------------------------------------------------- */
+
+.theme-toggle {
+  background: transparent;
+  border: 1px solid var(--hairline);
+  color: var(--text-dim);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+  flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+  border-color: var(--brass-dim);
+  color: var(--text);
+}
+
+/* --- Component: button (primary) -------------------------------------------------------------
+   docs/BRAND.md: brass fill, ink text, 4px radius, no shadow. Hover adds a brass-dim border –
+   the fill never moves or glows. */
+
+.btn {
+  display: inline-block;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.7rem 1.4rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+
+.btn-primary {
+  background: var(--brass);
+  color: var(--ink);
+}
+
+.btn-primary:hover {
+  border-color: var(--brass-dim);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--hairline);
+}
+
+.btn-secondary:hover {
+  border-color: var(--brass-dim);
+}
+
+/* --- Component: card ----------------------------------------------------------------------
+   docs/BRAND.md: panel fill, 1px hairline border, 6-8px radius. Hover only if interactive:
+   background steps to panel-raised, no border colour change, no transform. */
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
   padding: 1.5rem;
+  transition: background var(--transition);
+}
+
+.card.interactive:hover {
+  background: var(--panel-raised);
+  cursor: pointer;
+}
+
+/* --- Component: table row -------------------------------------------------------------------
+   docs/BRAND.md: no card chrome on data tables – a hairline under each row, panel-raised on
+   hover, numeric columns right-aligned with tabular figures, never centred. */
+
+table.ledger {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table.ledger th {
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: 500;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--hairline);
+}
+
+table.ledger td {
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--hairline);
+}
+
+table.ledger tr {
+  transition: background var(--transition);
+}
+
+table.ledger tbody tr:hover {
+  background: var(--panel-raised);
+}
+
+table.ledger th.num,
+table.ledger td.num {
+  text-align: right;
+}
+
+/* --- Component: live/pulsing element ---------------------------------------------------------
+   docs/BRAND.md: opacity oscillates brass between 100% and 70% on a slow (~2.5s) sine, one loop
+   only per state change – never an indefinite pulse. Applied via .is-pulsing, removed by JS once
+   the state settles (e.g. a device code moves from "pending" to "linked"). */
+
+.status-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--brass);
+}
+
+.status-dot.is-pulsing {
+  animation: lucrum-pulse 2.5s ease-in-out 1;
+}
+
+.status-dot.is-loss {
+  background: var(--loss);
+}
+
+.status-dot.is-gain {
+  background: var(--gain);
+}
+
+@keyframes lucrum-pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot.is-pulsing {
+    animation: none;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* --- Home page ------------------------------------------------------------------------------ */
+
+.hero h2 {
+  font-size: 2.1rem;
+  margin-bottom: 1rem;
+}
+
+.hero p {
+  color: var(--text-dim);
+  max-width: 34rem;
+  font-size: 1.02rem;
+}
+
+.hero .actions {
+  margin-top: 1.75rem;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.notice {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--hairline);
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+/* --- Mobile --------------------------------------------------------------------------------- */
+
+@media (max-width: 520px) {
+  .shell {
+    padding: 0 1.1rem;
+  }
+  header.site-header {
+    flex-direction: column;
+  }
+  .hero h2 {
+    font-size: 1.6rem;
+  }
+  table.ledger th,
+  table.ledger td {
+    padding: 0.5rem 0.4rem;
+    font-size: 0.85rem;
+  }
 }

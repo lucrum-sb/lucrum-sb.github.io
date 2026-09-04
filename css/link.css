@@ -1,0 +1,75 @@
+/* /link page – additions to css/main.css's token system and component patterns. Nothing here
+   introduces a new colour or radius outside docs/BRAND.md's token set. */
+
+.link-card {
+  margin-top: 2rem;
+  max-width: 30rem;
+}
+
+.link-status {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+}
+
+.link-step {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.link-step h3 {
+  font-size: 1.15rem;
+  margin-bottom: 0.4rem;
+}
+
+.link-step .dim {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.link-step code {
+  background: var(--panel-raised);
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.9em;
+}
+
+#code-form {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.code-input {
+  flex: 1;
+  min-width: 9rem;
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.65rem 0.8rem;
+  text-transform: uppercase;
+  transition: border-color var(--transition);
+}
+
+.code-input:focus {
+  outline: none;
+  border-color: var(--brass-dim);
+}
+
+.error-text {
+  color: var(--loss);
+  font-size: 0.88rem;
+  margin: 0.9rem 0 0;
+}
+
+@media (max-width: 520px) {
+  #code-form {
+    flex-direction: column;
+  }
+}
