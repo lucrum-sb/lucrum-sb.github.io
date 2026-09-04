@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Lucrum</title>
+  <script>
+    // GitHub Pages has no server-side routing, so a shareable `/p/<uuid>` path (per
+    // docs/CONTRACTS.md's profile section) 404s here – this redirects it to the real static page,
+    // `p/index.html?uuid=<uuid>`, that reads the same GET /portfolio/<uuid> endpoint. Anything
+    // else genuinely doesn't exist and falls through to the plain message below.
+    (function () {
+      var m = window.location.pathname.match(/\/p\/([^/]+)\/?$/);
+      if (m && m[1]) {
+        window.location.replace('/p/?uuid=' + encodeURIComponent(m[1]));
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/css/main.css" />
+</head>
+<body>
+  <div class="shell">
+    <main style="padding-top:4rem">
+      <h1>Page not found</h1>
+      <p><a href="/index.html">Back to Lucrum</a></p>
+    </main>
+  </div>
+</body>
+</html>

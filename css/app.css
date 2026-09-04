@@ -1,0 +1,390 @@
+/* Shared components for Phase 8's inner pages (signals, item, calendar, profile, account) –
+   additions to css/main.css's token system. Nothing here introduces a colour, radius or type
+   pairing outside docs/BRAND.md's token set. */
+
+/* Wider shell for chart-heavy and table-heavy pages – main.css's 720px is right for the marketing
+   shell but too narrow for a ledger table or a chart with room to breathe. */
+.shell-wide {
+  max-width: 900px;
+}
+
+/* --- Nav (shared header across inner pages) ------------------------------------------------- */
+
+nav.site-nav {
+  display: flex;
+  gap: 1.25rem;
+  margin-top: 0.9rem;
+  flex-wrap: wrap;
+}
+
+nav.site-nav a {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 0.92rem;
+  border-bottom: 1px solid transparent;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+nav.site-nav a:hover,
+nav.site-nav a[aria-current="page"] {
+  color: var(--text);
+  border-color: var(--brass-dim);
+}
+
+/* --- Error / empty states --------------------------------------------------------------------
+   docs/BRAND.md's copy register: declarative, never a blank page or an infinite spinner. */
+
+.error-state {
+  padding: 1.5rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  max-width: 34rem;
+}
+
+.loading-state {
+  color: var(--text-dim);
+  padding: 1rem 0;
+}
+
+/* --- Hero stat card (signal browser's "hero is the live number") --------------------------- */
+
+.hero-signal {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 1.75rem 2rem;
+}
+
+.hero-signal .hero-kicker {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 0.5rem;
+}
+
+.hero-signal h2 {
+  font-size: 1.9rem;
+  margin: 0 0 0.5rem;
+}
+
+.hero-signal .thesis {
+  color: var(--text-dim);
+  max-width: 40rem;
+  margin: 0.5rem 0 1.25rem;
+}
+
+.hero-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 1.25rem 1.5rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.hero-figures .figure .label {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.hero-figures .figure .value {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 1.35rem;
+  color: var(--text);
+}
+
+.hero-figures .figure .value.brass {
+  color: var(--brass);
+}
+
+.caveat {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  border-left: 2px solid var(--brass-dim);
+  padding-left: 0.75rem;
+}
+
+/* --- Filter tabs ------------------------------------------------------------------------------ */
+
+.type-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 2rem 0 1.25rem;
+}
+
+.type-tab {
+  background: transparent;
+  border: 1px solid var(--hairline);
+  color: var(--text-dim);
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+
+.type-tab[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--brass);
+  border-color: var(--brass);
+}
+
+.type-tab:hover:not([aria-pressed="true"]) {
+  border-color: var(--brass-dim);
+  color: var(--text);
+}
+
+/* --- Signal / position rows -------------------------------------------------------------------
+   Table on wide viewports, stacked cards on narrow – docs/BRAND.md's table-row pattern plus
+   CLAUDE.md rule 8 (mobile matters). */
+
+.signal-row td.item {
+  font-weight: 600;
+}
+
+.signal-row .why {
+  display: block;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  margin-top: 0.15rem;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.unfitted-note {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+/* --- Item detail -------------------------------------------------------------------------- */
+
+.item-title {
+  font-size: 2rem;
+}
+
+.range-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin: 1.5rem 0 1rem;
+}
+
+.chart-card {
+  padding: 1.25rem 1rem 0.75rem;
+}
+
+.chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 360px;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  padding: 0.75rem 0.25rem 1rem;
+  flex-wrap: wrap;
+}
+
+.chart-legend .swatch {
+  display: inline-block;
+  width: 0.85rem;
+  height: 2px;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+
+.confidence-note {
+  margin-top: 1rem;
+  color: var(--text-dim);
+  font-size: 0.88rem;
+}
+
+/* --- Calendar / event timeline ----------------------------------------------------------------
+   A quiet list, not a grid widget – docs/PLAN.md Phase 8's brief. */
+
+.event-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.event-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.event-row .event-name {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 1.1rem;
+}
+
+.event-row .event-source {
+  display: block;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin-top: 0.2rem;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.event-row .event-when {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.event-row .event-countdown {
+  display: block;
+  color: var(--brass);
+  font-size: 0.85rem;
+}
+
+.event-row .event-time {
+  display: block;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+/* --- Profile / portfolio --------------------------------------------------------------------- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 1.25rem;
+  margin: 1.5rem 0 2.5rem;
+}
+
+.stat-card {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+}
+
+.stat-card .label {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.stat-card .value {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 1.5rem;
+}
+
+.hitrate-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.hitrate-grid .cell {
+  text-align: center;
+}
+
+.hitrate-grid .cell .label {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  display: block;
+}
+
+.hitrate-grid .cell .value {
+  font-size: 1.1rem;
+}
+
+.planned-actual {
+  font-size: 0.85rem;
+}
+
+.planned-actual .planned {
+  color: var(--text-dim);
+}
+
+.planned-actual .actual {
+  color: var(--text);
+  display: block;
+}
+
+.privacy-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 2rem 0;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.privacy-toggle .desc {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  flex: 1;
+}
+
+/* --- Section spacing / headings shared across inner pages ------------------------------------ */
+
+.section-heading {
+  margin: 2.5rem 0 1rem;
+  font-size: 1.3rem;
+}
+
+/* --- Mobile ---------------------------------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .hero-signal {
+    padding: 1.25rem 1.25rem;
+  }
+  .hero-signal h2 {
+    font-size: 1.4rem;
+  }
+  .hitrate-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  table.ledger thead {
+    display: none;
+  }
+  table.ledger, table.ledger tbody, table.ledger tr, table.ledger td {
+    display: block;
+    width: 100%;
+  }
+  table.ledger tr {
+    border-bottom: 1px solid var(--hairline);
+    padding: 0.75rem 0;
+  }
+  table.ledger td {
+    border-bottom: none;
+    padding: 0.2rem 0;
+    text-align: left !important;
+  }
+  table.ledger td.num::before,
+  table.ledger td[data-label]::before {
+    content: attr(data-label) ": ";
+    color: var(--text-dim);
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  .event-row {
+    flex-direction: column;
+  }
+  .event-row .event-when {
+    text-align: left;
+  }
+}
