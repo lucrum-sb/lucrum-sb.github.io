@@ -87,10 +87,15 @@ function render(health, version, snap) {
     <h2 class="section-heading">Stored history</h2>
     <div class="card">
       <div class="grid grid-3">
-        ${stat('Raw ticks', formatCompact(health.rows.raw))}
+        ${health.rows
+    ? `${stat('Raw ticks', formatCompact(health.rows.raw))}
         ${stat('Hourly bars', formatCompact(health.rows.barsHourly), '', `oldest ${esc(formatLocalTime(health.oldestBar.hourly))}`)}
-        ${stat('Five-minute bars', formatCompact(health.rows.barsFiveMin), '', `oldest ${esc(formatLocalTime(health.oldestBar.fiveMin))}`)}
+        ${stat('Five-minute bars', formatCompact(health.rows.barsFiveMin), '', `oldest ${esc(formatLocalTime(health.oldestBar.fiveMin))}`)}`
+    : `${stat('Raw ticks', 'not counted')}
+        ${stat('Hourly bars', 'not counted', '', `oldest ${esc(formatLocalTime(health.oldestBar.hourly))}`)}
+        ${stat('Five-minute bars', 'not counted', '', `oldest ${esc(formatLocalTime(health.oldestBar.fiveMin))}`)}`}
       </div>
+      ${health.rows ? '' : '<p class="caveat">The worker served this without the row counts – it only computes them when asked, and this page asked. Their absence means the count query itself failed, which on the free plan usually means the daily row-read budget is spent.</p>'}
       <p class="dim" style="font-size:0.82rem;margin:1rem 0 0">
         A range can only be charted or predicted as far back as the bars behind it reach. There are
         ${esc(formatDuration(now - health.oldestBar.hourly))} of hourly bars, so asking for six
@@ -122,7 +127,10 @@ function render(health, version, snap) {
 }
 
 Promise.all([
-  callWorker('/health'),
+  // ?rows=1: this is the one page that shows the stored-row counts, so it is the one page that
+  // pays for them. See api/health.js - the counts are full table scans against D1's row-read
+  // budget, which is why they are opt-in rather than part of every /health call.
+  callWorker('/health?rows=1'),
   callWorker('/version').catch(() => null),
   loadSnapshot().catch(() => null),
 ]).then(([healthRes, versionRes, snap]) => {

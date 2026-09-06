@@ -214,6 +214,9 @@ export function mountStatusStrip(el, extra = {}) {
   }
 
   paint();
+  // Deliberately not /health?rows=1. This strip is mounted on every page, and the row counts are
+  // full table scans against D1's free-tier row-read budget - asking for them here once cost a
+  // day's entire quota in about ten page views. The three fields below are all this needs.
   callWorker('/health').then(({ status, body }) => {
     if (status !== 200) return;
     state.lastIngestAt = body.lastIngestAt;
