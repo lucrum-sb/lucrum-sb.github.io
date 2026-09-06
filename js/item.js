@@ -35,12 +35,39 @@ const RANGE_MS = {
   '3M': 90 * 86400e3, '6M': 180 * 86400e3,
 };
 
+// Mirrors worker/src/ingest/bars.js's RANGE_BAR_MS / RANGE_POINTS (docs/CONTRACTS.md's /history
+// point-count table). No shared import across the worker/web boundary on a static, build-step-free
+// site, so this is a deliberate duplicate – keep it in lockstep with the worker if that table moves.
+const RANGE_BAR_MS = { '1h': 60e3, '1d': 300e3, '1w': 3600e3, '1M': 3600e3, '3M': 28_800e3, '6M': 86_400e3 };
+const RANGE_POINTS = { '1h': 60, '1d': 288, '1w': 168, '1M': 372, '3M': 279, '6M': 186 };
+
+/** The actual replay span for a range's stored bars – not always equal to RANGE_MS's calendar
+ * shorthand (1M's 372 hourly bars is ~15.5 days, not 30), so the backtest label must derive it
+ * from the real bar width and count rather than assume the range name means what it sounds like. */
+function rangeWindowMs(r) {
+  return RANGE_BAR_MS[r] * RANGE_POINTS[r];
+}
+
+// Mirrors api/backtest.js's and api/predict.js's FUTURE_FRACTION – docs/CONTRACTS.md's "the chart
+// window puts futureMs at 30% of the range span" is one rule, so this is the same constant those
+// derive from, not an independent guess.
+const FUTURE_FRACTION = 0.3;
+
+/** How far past `from` a backtest of range `r` actually replays – the worker derives futureMs the
+ * same way, and it is what the result footer reports, so the button must name this and not the
+ * whole window or the two contradict each other on screen. */
+function backtestHorizonMs(r) {
+  return rangeWindowMs(r) * FUTURE_FRACTION;
+}
+
 // 1w, not 1d: the 1d tier is bars_5m, which ingest/cron.js writes only for the 100 highest-volume
 // products (a D1 write-cap decision, not a bug), so it is empty for most of the catalogue. 1w reads
 // bars_1h, which covers every product – the default range has to be one that actually has data.
 let range = '1w';
 let chart = null;
 let lastPayload = null; // { history, predict } – kept so a theme flip can repaint without refetching
+let backtestHasRun = false; // flips the button's copy from "Run a … backtest" to "Run again"
+let nowTicker = null; // interval id for the chart's live "now" marker, cleared on rebuild/pagehide
 
 titleEl.textContent = itemId ? itemLabel(itemId) : 'No item selected';
 idEl.textContent = itemId;
@@ -106,7 +133,11 @@ function glowPlugin() {
   };
 }
 
-function chromePlugin(nowTs, events) {
+// nowRef is a mutable { value } box, not a plain timestamp: CLAUDE.md rule 12 requires anything
+// that counts up or down to re-render on a tick, and this plugin instance is baked into the
+// chart at construction time, so the only way for the marker to keep moving after that is for the
+// draw call to read a value the ticker below can update in place.
+function chromePlugin(nowRef, events) {
   return {
     id: 'lucrumChrome',
     afterDatasetsDraw(c) {
@@ -116,7 +147,7 @@ function chromePlugin(nowTs, events) {
       ctx.save();
       ctx.shadowBlur = 0;
 
-      const nowPx = x.getPixelForValue(nowTs);
+      const nowPx = x.getPixelForValue(nowRef.value);
       if (nowPx >= chartArea.left && nowPx <= chartArea.right) {
         ctx.strokeStyle = cssVar('--accent');
         ctx.lineWidth = 1;
@@ -203,7 +234,14 @@ function buildChart({ history, predict }) {
 
   const events = predict ? (predict.events || []) : [];
 
+  // buildTime anchors the ticker below: it advances `now` by wall-clock time elapsed since this
+  // chart was built, rather than re-reading Date.now() outright, so a client/worker clock skew
+  // shows up as a constant (harmless) offset instead of a jump each time the marker ticks.
+  const buildTime = Date.now();
+  const nowRef = { value: now };
+
   if (chart) chart.destroy();
+  if (nowTicker) { clearInterval(nowTicker); nowTicker = null; }
   const canvas = document.getElementById('chart');
   chart = new Chart(canvas.getContext('2d'), {
     type: 'line',
@@ -255,8 +293,19 @@ function buildChart({ history, predict }) {
         },
       },
     },
-    plugins: [glowPlugin(), chromePlugin(now, events)],
+    plugins: [glowPlugin(), chromePlugin(nowRef, events)],
   });
+
+  // Retick the "now" marker every second so it keeps advancing through the fixed window instead
+  // of freezing at page-load time (CLAUDE.md rule 12). This is purely local redrawing – no worker
+  // call of any kind – because 2026-09-06 already burned the whole day's D1 free-tier row-read
+  // budget once; an auto-refresh loop on an open item page would reintroduce exactly that outage.
+  // `chart.update('none')` skips Chart.js's entry animation so the price lines do not re-draw
+  // themselves every second, only the marker moves.
+  nowTicker = setInterval(() => {
+    nowRef.value = now + (Date.now() - buildTime);
+    chart.update('none');
+  }, 1000);
 }
 
 /* --- Model + events panels ---------------------------------------------------------------------- */
@@ -361,7 +410,24 @@ async function renderItemSignals() {
    or after `from`, so it is the most expensive call the worker serves. A negative skill is a
    failing result and is stated as one. */
 
+// The button's copy names the horizon it will actually replay forward over, which is what the
+// result footer then reports back as body.futureMs – naming the whole range window instead would
+// have the button and its own result contradicting each other. A fixed "24 hours" was wrong for
+// every range but 1d, since the horizon is a property of the selected range, not a constant.
+function backtestButtonLabel(again) {
+  const horizon = formatDuration(backtestHorizonMs(range));
+  return again ? `Run again – ${horizon}` : `Run a ${horizon} backtest`;
+}
+
+/** Keeps the visible button's copy in step with the range tabs even before a run – skipped while
+ * a request is in flight (`disabled`) so it does not clobber the "Running…" text. */
+function refreshBacktestButtonLabel() {
+  const btn = document.getElementById('backtest-btn');
+  if (btn && !btn.disabled) btn.textContent = backtestButtonLabel(backtestHasRun);
+}
+
 function renderBacktest(body) {
+  backtestHasRun = true;
   const m = body.metrics || {};
   const skillNote = m.skill === null || m.skill === undefined
     ? 'Skill is undefined here – the flat baseline made no error to improve on.'
@@ -388,7 +454,7 @@ function renderBacktest(body) {
         model ${esc(body.modelVersion || '–')}. Net per unit assumes both legs reach the top of
         book, so read it alongside skill, not instead of it.
       </p>
-      <p style="margin:0.9rem 0 0"><button class="btn btn-sm" id="backtest-btn" type="button">Run again</button></p>
+      <p style="margin:0.9rem 0 0"><button class="btn btn-sm" id="backtest-btn" type="button">${esc(backtestButtonLabel(true))}</button></p>
     </div>`;
   wireBacktest();
 }
@@ -399,9 +465,24 @@ function wireBacktest() {
   btn.addEventListener('click', async () => {
     btn.disabled = true;
     btn.textContent = 'Running…';
-    const from = Date.now() - 86400000;
+    // Anchored to the horizon, not a fixed 24 hours, and deliberately as recent as the data
+    // allows. Two opposing constraints meet here: the worker replays forward from `from` by
+    // futureMs and can only score that against bars that already exist, so `from` has to sit at
+    // least a horizon in the past or the replay runs off the end of history and is silently scored
+    // on only the part that has happened – but it also needs quant/predict.js's MIN_BARS of
+    // history *before* `from`, and only ~7 days of hourly bars are stored so far. Anchoring a
+    // whole window back satisfies the first and fails the second on 1w. One horizon back, plus two
+    // closed bars of margin so the last scored bar is definitely written, satisfies both and
+    // scores the model on its most recent completed window rather than a stale one.
+    const from = Date.now() - backtestHorizonMs(range) - 2 * RANGE_BAR_MS[range];
+    // range, not a hardcoded '1d': '1d' resolves to the bars_5m tier, which ingest/cron.js only
+    // writes for the ~100 highest-volume products (a deliberate D1 write-cap decision), so a
+    // literal '1d' here made the backtest fail for roughly 1,900 of ~2,000 products. Using the
+    // chart's own selected range makes the backtest describe the same window the user is already
+    // looking at, and since the chart defaults to '1w' (bars_1h, populated for every product) the
+    // default path works everywhere.
     try {
-      const { status, body } = await callWorker(`/backtest?item=${encodeURIComponent(itemId)}&from=${from}&range=1d`);
+      const { status, body } = await callWorker(`/backtest?item=${encodeURIComponent(itemId)}&from=${from}&range=${range}`);
       if (status !== 200) {
         renderErrorState(backtestSlot, classifyFailure(null, body) || 'unknown', { item: itemId, range });
         return;
@@ -501,6 +582,7 @@ rangeTabs.forEach((btn) => {
   btn.addEventListener('click', () => {
     range = btn.dataset.range;
     setRangePressed();
+    refreshBacktestButtonLabel();
     loadChart();
   });
 });
@@ -509,8 +591,14 @@ rangeTabs.forEach((btn) => {
 // from the payload already in hand rather than refetching.
 window.LucrumTheme.onChange(() => { if (lastPayload) buildChart(lastPayload); });
 
+// Matches the pattern in shell.js's mountStatusStrip and calendar.js: reads whichever ticker is
+// current at unload time rather than a snapshot, so a range change earlier in the session (which
+// swaps nowTicker for a fresh one) cannot leave the old interval running past pagehide.
+window.addEventListener('pagehide', () => { if (nowTicker) clearInterval(nowTicker); });
+
 setRangePressed();
 wireBacktest();
+refreshBacktestButtonLabel(); // the static HTML label names 1d/24h; correct it to the default range
 loadChart();
 renderItemSignals();
 loadSnapshot().then(renderQuote).catch(() => {
