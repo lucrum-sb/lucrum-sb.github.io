@@ -95,7 +95,14 @@ function render(health, version, snap) {
         ${stat('Hourly bars', 'not counted', '', `oldest ${esc(formatLocalTime(health.oldestBar.hourly))}`)}
         ${stat('Five-minute bars', 'not counted', '', `oldest ${esc(formatLocalTime(health.oldestBar.fiveMin))}`)}`}
       </div>
-      ${health.rows ? '' : '<p class="caveat">The worker served this without the row counts – it only computes them when asked, and this page asked. Their absence means the count query itself failed, which on the free plan usually means the daily row-read budget is spent.</p>'}
+      ${health.rows ? '' : `<p style="margin:0.9rem 0 0"><button class="btn btn-sm" id="count-rows-btn" type="button">Count stored rows</button></p>
+      <p class="dimmer" style="font-size:0.75rem;margin:0.4rem 0 0">
+        Counting is a deliberate click, not part of loading this page. The counts are
+        <span class="mono">COUNT(*)</span> scans and D1 bills every row scanned, so running them on
+        each visit spent the free plan's whole daily row-read budget in about ten page views – which
+        took every stored-data endpoint down until midnight UTC. The oldest-bar times above are
+        index seeks and are always live.
+      </p>`}
       <p class="dim" style="font-size:0.82rem;margin:1rem 0 0">
         A range can only be charted or predicted as far back as the bars behind it reach. There are
         ${esc(formatDuration(now - health.oldestBar.hourly))} of hourly bars, so asking for six
@@ -127,10 +134,9 @@ function render(health, version, snap) {
 }
 
 Promise.all([
-  // ?rows=1: this is the one page that shows the stored-row counts, so it is the one page that
-  // pays for them. See api/health.js - the counts are full table scans against D1's row-read
-  // budget, which is why they are opt-in rather than part of every /health call.
-  callWorker('/health?rows=1'),
+  // Plain /health, no ?rows=1 - see api/health.js. The row counts are COUNT(*) scans billed per row
+  // scanned, so even this page loads without them and asks only when the button below is clicked.
+  callWorker('/health'),
   callWorker('/version').catch(() => null),
   loadSnapshot().catch(() => null),
 ]).then(([healthRes, versionRes, snap]) => {
@@ -138,8 +144,39 @@ Promise.all([
     renderErrorState(body, classifyFailure(null, healthRes.body) || 'unknown', { what: 'Worker health' });
     return;
   }
-  render(healthRes.body, versionRes && versionRes.status === 200 ? versionRes.body : null, snap);
-  startAgeTicker(body);
+  const version = versionRes && versionRes.status === 200 ? versionRes.body : null;
+  paint(healthRes.body, version, snap);
 }).catch(() => {
   renderErrorState(body, 'unreachable');
 });
+
+/** Renders, then re-wires the count button – render() replaces the whole subtree, so the listener
+ * has to be reattached after every paint rather than bound once at startup. */
+let stopAgeTicker = null;
+
+function paint(health, version, snap) {
+  render(health, version, snap);
+  // startAgeTicker returns its own stopper; a second paint would otherwise leave the first
+  // interval running against detached nodes.
+  if (stopAgeTicker) stopAgeTicker();
+  stopAgeTicker = startAgeTicker(body);
+
+  const btn = document.getElementById('count-rows-btn');
+  if (!btn) return; // already counted this visit
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Counting…';
+    try {
+      const { status, body: counted } = await callWorker('/health?rows=1');
+      // A failure here is usually the row-read budget rather than a bug, and the count is the one
+      // thing that can exhaust it - so report it in place and leave the rest of the page standing.
+      if (status !== 200 || !counted.rows) {
+        btn.textContent = 'Counting failed – the row-read budget is likely spent';
+        return;
+      }
+      paint(counted, version, snap);
+    } catch {
+      btn.textContent = 'Counting failed – the worker did not respond';
+    }
+  });
+}
