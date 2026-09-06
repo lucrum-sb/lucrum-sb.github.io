@@ -2,24 +2,19 @@
 // of the wrong theme. Not a module (loaded plain, in <head>) on purpose: module scripts defer,
 // and this needs to run before first paint. See docs/BRAND.md's "Theme toggle" section.
 //
-// Rule: prefers-color-scheme is the initial guess; an explicit user choice (persisted in
-// localStorage) then wins over the OS preference on every later visit. Until the user makes an
-// explicit choice, the page keeps following the OS preference live (a listener below), since
-// "initial guess" implies it can keep guessing until overridden.
+// Rule: dark is the product's default, regardless of prefers-color-scheme – the terminal look and
+// the data glow only work on a dark ground. An explicit user choice (persisted in localStorage)
+// then wins on every later visit. The OS preference is deliberately not consulted; a light theme
+// exists and is complete, but it is the alternate rather than the default.
 (function () {
   var STORAGE_KEY = 'lucrum-theme';
 
-  function systemTheme() {
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : 'light';
-  }
-
   function storedTheme() {
     try {
-      return localStorage.getItem(STORAGE_KEY);
+      var v = localStorage.getItem(STORAGE_KEY);
+      return v === 'light' || v === 'dark' ? v : null;
     } catch (err) {
-      return null; // localStorage unavailable (private mode, etc.) – fall back to system guess
+      return null; // localStorage unavailable (private mode, etc.) – fall back to the default
     }
   }
 
@@ -37,7 +32,7 @@
   }
 
   function currentTheme() {
-    return document.documentElement.getAttribute('data-theme') || systemTheme();
+    return document.documentElement.getAttribute('data-theme') || 'dark';
   }
 
   function toggleTheme() {
@@ -46,14 +41,19 @@
     return next;
   }
 
-  applyTheme(storedTheme() || systemTheme());
+  applyTheme(storedTheme() || 'dark');
 
-  if (window.matchMedia) {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
-      if (storedTheme()) return; // explicit choice already made – it wins, per docs/BRAND.md
-      applyTheme(e.matches ? 'dark' : 'light');
-    });
-  }
-
-  window.LucrumTheme = { current: currentTheme, toggle: toggleTheme, set: setExplicitTheme };
+  window.LucrumTheme = {
+    current: currentTheme,
+    toggle: toggleTheme,
+    set: setExplicitTheme,
+    /** Registered by pages that must repaint on theme change – a canvas reads CSS variables at
+     * draw time, so it cannot re-theme by itself the way the DOM does. */
+    onChange: function (fn) {
+      (window.LucrumTheme._subs = window.LucrumTheme._subs || []).push(fn);
+    },
+    _notify: function (theme) {
+      (window.LucrumTheme._subs || []).forEach(function (fn) { fn(theme); });
+    },
+  };
 })();

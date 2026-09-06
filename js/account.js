@@ -9,17 +9,12 @@
 // static page can learn its own account's uuid without a dedicated "whoami" endpoint, which isn't
 // in the contract. If the worker's actual redirect shape differs, only this file needs updating.
 import { WORKER_ORIGIN, callWorker, WorkerUnreachableError } from './api.js';
-import { renderErrorState } from './errors.js';
+import { renderErrorState, classifyFailure, failureText } from './errors.js';
 import { renderProfile } from './portfolio-render.js';
+import { esc } from './format.js';
+import './shell.js';
 
 const STORAGE_KEY = 'lucrum-account-uuid';
-
-const toggle = document.getElementById('theme-toggle');
-function syncToggleLabel() {
-  toggle.textContent = window.LucrumTheme.current() === 'dark' ? 'Light mode' : 'Dark mode';
-}
-syncToggleLabel();
-toggle.addEventListener('click', () => { window.LucrumTheme.toggle(); syncToggleLabel(); });
 
 const signinSlot = document.getElementById('signin-slot');
 const signinBtn = document.getElementById('signin-btn');
@@ -44,21 +39,29 @@ if (uuidFromRedirect) {
 }
 
 function renderPrivacyToggle(isPublic, uuid) {
+  // data-base is the relative path back to the site root, so this resolves correctly whether the
+  // site is served from a domain root or from a GitHub Pages project subpath.
+  const shareUrl = new URL(`${document.body.dataset.base}p/?uuid=${encodeURIComponent(uuid)}`, window.location.href).href;
   privacySlot.innerHTML = `
     <div class="privacy-toggle">
+      <span class="status-dot ${isPublic ? 'is-gain' : ''}"></span>
       <div class="desc">
-        Your profile is currently <strong>${isPublic ? 'public' : 'private'}</strong>.
-        A public profile is viewable by anyone at its shareable link with no login.
+        Your profile is <strong>${isPublic ? 'public' : 'private'}</strong>.
+        ${isPublic
+    ? `Anyone with the link can read it without signing in: <a href="${esc(shareUrl)}">${esc(shareUrl)}</a>`
+    : 'Only you can read it. Private means private – there is no partial or redacted view.'}
       </div>
-      <button class="btn btn-secondary" id="toggle-public-btn" type="button">
+      <button class="btn btn-sm" id="toggle-public-btn" type="button">
         Make ${isPublic ? 'private' : 'public'}
       </button>
     </div>
-    <p class="error-text" id="toggle-error" hidden></p>
-  `;
-  document.getElementById('toggle-public-btn').addEventListener('click', async () => {
+    <p class="error-text" id="toggle-error" hidden></p>`;
+
+  document.getElementById('toggle-public-btn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
     const errEl = document.getElementById('toggle-error');
     errEl.hidden = true;
+    btn.disabled = true;
     try {
       const { status, body } = await callWorker('/portfolio/settings', {
         method: 'PATCH',
@@ -66,19 +69,24 @@ function renderPrivacyToggle(isPublic, uuid) {
         body: JSON.stringify({ public: !isPublic }),
       });
       if (status !== 200) {
+        btn.disabled = false;
         errEl.hidden = false;
-        errEl.textContent = body.message || body.code || 'Could not update the privacy setting.';
+        errEl.textContent = failureText(classifyFailure(null, body) || 'unknown', {
+          what: 'The privacy setting',
+        });
         return;
       }
       loadProfile(uuid);
     } catch (err) {
+      btn.disabled = false;
       errEl.hidden = false;
-      errEl.textContent = `The worker at ${WORKER_ORIGIN} did not respond. Check your connection and reload.`;
+      errEl.textContent = failureText('unreachable');
     }
   });
 }
 
 async function loadProfile(uuid) {
+  profileSlot.innerHTML = '<p class="loading-state">Loading your portfolio…</p>';
   let res;
   try {
     // credentials: 'include' (baked into callWorker) sends lucrum_session, so the worker
@@ -89,15 +97,19 @@ async function loadProfile(uuid) {
     throw err;
   }
   const { status, body } = res;
-  if (status === 403 && body.code === 'PORTFOLIO_PRIVATE') {
-    // Session cookie didn't match this uuid as owner – the stored uuid is stale or wrong.
+  if (status === 403 || status === 401) {
+    // Session cookie didn't match this uuid as owner – the stored uuid is stale, or the session
+    // expired. Either way the fix is the same: sign in again.
+    profileSlot.innerHTML = '';
+    privacySlot.innerHTML = '';
     signinSlot.hidden = false;
     signinError.hidden = false;
-    signinError.textContent = 'Could not verify you as this account\'s owner. Sign in again.';
+    signinError.textContent = 'Could not verify you as this account’s owner. Sign in again.';
     return;
   }
   if (status !== 200) {
-    renderErrorState(profileSlot, 'unknown');
+    privacySlot.innerHTML = '';
+    renderErrorState(profileSlot, classifyFailure(null, body) || 'unknown', { uuid, what: 'Your portfolio' });
     return;
   }
   signinSlot.hidden = true;

@@ -3,6 +3,8 @@
 // redirect) and `POST /auth/link/confirm`, and never re-implements the mod's device-code polling
 // or any auth logic of its own.
 import { WORKER_ORIGIN, callWorker, WorkerUnreachableError } from './api.js';
+import { failureText } from './errors.js';
+import './shell.js';
 
 const dot = document.getElementById('status-dot');
 const statusText = document.getElementById('status-text');
@@ -15,16 +17,6 @@ const codeInput = document.getElementById('code-input');
 const codeError = document.getElementById('code-error');
 const linkedStep = document.getElementById('linked-step');
 const linkedUuid = document.getElementById('linked-uuid');
-
-const toggle = document.getElementById('theme-toggle');
-function syncToggleLabel() {
-  toggle.textContent = window.LucrumTheme.current() === 'dark' ? 'Light mode' : 'Dark mode';
-}
-syncToggleLabel();
-toggle.addEventListener('click', () => {
-  window.LucrumTheme.toggle();
-  syncToggleLabel();
-});
 
 const params = new URLSearchParams(window.location.search);
 const initialCode = (params.get('code') || '').toUpperCase();
@@ -53,8 +45,7 @@ function showUnreachable() {
   setStatus('Could not reach the Lucrum worker.', 'loss');
   showStep('signin');
   signinError.hidden = false;
-  signinError.textContent =
-    `The worker at ${WORKER_ORIGIN} did not respond. Check your connection and reload.`;
+  signinError.textContent = failureText('unreachable');
   signinBtn.disabled = true;
 }
 

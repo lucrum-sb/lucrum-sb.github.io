@@ -2,27 +2,88 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Lucrum</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Not found – Lucrum</title>
   <script>
-    // GitHub Pages has no server-side routing, so a shareable `/p/<uuid>` path (per
-    // docs/CONTRACTS.md's profile section) 404s here – this redirects it to the real static page,
-    // `p/index.html?uuid=<uuid>`, that reads the same GET /portfolio/<uuid> endpoint. Anything
-    // else genuinely doesn't exist and falls through to the plain message below.
+    // GitHub Pages has no server-side routing, so the shareable paths in docs/CONTRACTS.md land
+    // here instead of on a page. Rewrite the two that have a static equivalent, then fall through
+    // to the message below for anything that genuinely does not exist.
     (function () {
-      var m = window.location.pathname.match(/\/p\/([^/]+)\/?$/);
-      if (m && m[1]) {
-        window.location.replace('/p/?uuid=' + encodeURIComponent(m[1]));
+      var p = window.location.pathname;
+      var profile = p.match(/\/p\/([^/]+)\/?$/);
+      if (profile && profile[1]) {
+        window.location.replace('/p/?uuid=' + encodeURIComponent(profile[1]));
+        return;
+      }
+      var item = p.match(/\/item\/([^/]+)\/?$/);
+      if (item && item[1]) {
+        window.location.replace('/item/?id=' + encodeURIComponent(item[1]));
       }
     })();
   </script>
+  <script src="/js/theme.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=JetBrains+Mono:wght@400..700&display=swap"
+    rel="stylesheet"
+  />
   <link rel="stylesheet" href="/css/main.css" />
+  <link rel="stylesheet" href="/css/app.css" />
 </head>
-<body>
-  <div class="shell">
-    <main style="padding-top:4rem">
-      <h1>Page not found</h1>
-      <p><a href="/index.html">Back to Lucrum</a></p>
-    </main>
+<body data-base="/">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <a class="wordmark" href="/index.html"><span class="tick">&#9642;</span> Lucrum</a>
+      <nav class="topnav" aria-label="Primary">
+        <a href="/market/">Market</a>
+        <a href="/signals/">Signals</a>
+        <a href="/calendar/">Calendar</a>
+        <a href="/account/">Portfolio</a>
+        <a href="/status/">Status</a>
+      </nav>
+      <div class="topbar-actions">
+        <button class="search-trigger" id="search-trigger" type="button" aria-label="Find a bazaar item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+          <span class="search-label">Find an item</span>
+          <span class="kbd">&#8984;K</span>
+        </button>
+        <button class="icon-btn" id="theme-toggle" type="button"></button>
+      </div>
+    </div>
   </div>
+
+  <div class="shell">
+    <main>
+      <div class="page-head">
+        <div>
+          <h1>Not found</h1>
+          <p class="sub">
+            No page at <code id="missing-path"></code>. If you were looking for a bazaar product,
+            press <span class="kbd">&#8984;K</span> and search for it by name or id.
+          </p>
+        </div>
+      </div>
+      <div class="quick-links" style="max-width:24rem">
+        <a class="quick-link" href="/market/"><span>Market<span class="desc">Every tracked product</span></span><span class="arrow">&rarr;</span></a>
+        <a class="quick-link" href="/signals/"><span>Signals<span class="desc">Current theses</span></span><span class="arrow">&rarr;</span></a>
+        <a class="quick-link" href="/index.html"><span>Overview<span class="desc">Back to the start</span></span><span class="arrow">&rarr;</span></a>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <span>Bazaar intelligence for Hypixel SkyBlock</span>
+      <a href="/link/">Link your account</a>
+      <a href="/status/">Worker status</a>
+      <a href="https://seyvault.github.io" rel="noopener">SeyVault</a>
+    </footer>
+  </div>
+
+  <script type="module">
+    // Absolute, not relative: 404.html is served for arbitrary paths, so a relative specifier
+    // would resolve against whatever URL the reader actually asked for.
+    import '/js/shell.js';
+    document.getElementById('missing-path').textContent = window.location.pathname;
+  </script>
 </body>
 </html>

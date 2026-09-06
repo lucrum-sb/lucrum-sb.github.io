@@ -1,40 +1,65 @@
-/* Lucrum – visual identity. Token system, component patterns and motion rules from
-   docs/BRAND.md. This is a standalone stylesheet – it does not import or reuse SeyVault's CSS.
+/* Lucrum – design system. Tokens, app shell and shared components, per docs/BRAND.md.
+   Standalone: this does not import or reuse SeyVault's CSS.
 
-   Direction: private trading desk, not game HUD. Light by default, dark by explicit toggle.
-   Own type pairing (Fraunces display / Inter body+data), own accent (aged brass, not acid-green,
-   not vermilion, not terracotta), own radius (6-8px, not SeyVault's 14px), no rarity colours. */
+   Direction: a trading terminal. Monotone grey surfaces, colour reserved for data, glow on data
+   colours in the dark theme only. Dark is the default; light is the alternate. No serif, no warm
+   hues anywhere – see docs/BRAND.md's "Before shipping" checklist. */
 
-/* --- Tokens --------------------------------------------------------------------------------- */
+/* --- Tokens ---------------------------------------------------------------------------------- */
 
-:root {
-  --ink: #F7F5EF;
-  --panel: #FFFFFF;
-  --panel-raised: #EFEBDF;
-  --hairline: #DCD5C4;
-  --text: #1B1C18;
-  --text-dim: #6B6A5E;
-  --brass: #9C7A2E;
-  --brass-dim: #C4AD75;
+:root,
+:root[data-theme="dark"] {
+  --bg: #0A0B0D;
+  --surface: #101216;
+  --surface-2: #171A1F;
+  --line: #22262D;
+  --line-strong: #333944;
+  --text: #E7EAEE;
+  --text-2: #98A1AD;
+  --text-3: #68707C;
 
-  --gain: #3F7A54;
-  --loss: #B0453A;
-  --live: var(--brass);
+  --accent: #6EA8FE;
+  --buy: #2EE6A8;
+  --sell: #FFB13D;
+  --gain: #2EE6A8;
+  --loss: #FF6B6B;
 
-  --radius: 8px;
+  /* Glow multiplier – every glow effect scales by this, so the light theme turns them all off
+     with one token rather than a parallel rule set. docs/BRAND.md, "Glow". */
+  --glow: 1;
+  --glow-accent: 0 0 18px rgba(110, 168, 254, 0.35);
+  --glow-buy: 0 0 18px rgba(46, 230, 168, 0.35);
+  --glow-sell: 0 0 18px rgba(255, 177, 61, 0.35);
+  --glow-loss: 0 0 18px rgba(255, 107, 107, 0.35);
+
+  --radius: 6px;
   --radius-sm: 4px;
-  --transition: 150ms ease-out;
+  --transition: 140ms ease-out;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-:root[data-theme="dark"] {
-  --ink: #0B0D0C;
-  --panel: #14211A;
-  --panel-raised: #1C2E24;
-  --hairline: #2B3A31;
-  --text: #EDE6D6;
-  --text-dim: #8B9A8F;
-  --brass: #C9A24B;
-  --brass-dim: #7A6A3D;
+:root[data-theme="light"] {
+  --bg: #FAFAFB;
+  --surface: #FFFFFF;
+  --surface-2: #F1F2F4;
+  --line: #E1E3E8;
+  --line-strong: #C9CDD5;
+  --text: #14161A;
+  --text-2: #5A6270;
+  --text-3: #838B98;
+
+  --accent: #2563EB;
+  --buy: #0F9D76;
+  --sell: #B57314;
+  --gain: #0F9D76;
+  --loss: #D14343;
+
+  --glow: 0;
+  --glow-accent: none;
+  --glow-buy: none;
+  --glow-sell: none;
+  --glow-loss: none;
 }
 
 /* --- Base ------------------------------------------------------------------------------------ */
@@ -44,281 +69,659 @@
 }
 
 html {
-  color-scheme: light dark;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 body {
   margin: 0;
-  background: var(--ink);
+  background: var(--bg);
   color: var(--text);
-  font-family: 'Inter', system-ui, sans-serif;
-  font-size: 16px;
-  line-height: 1.5;
-  transition: background var(--transition), color var(--transition);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
 
-h1, h2, h3 {
-  font-family: 'Fraunces', Georgia, serif;
-  font-weight: 500;
-  letter-spacing: -0.01em;
+h1, h2, h3, h4 {
+  font-family: var(--sans);
+  font-weight: 550;
+  letter-spacing: -0.02em;
   margin: 0;
   color: var(--text);
+  line-height: 1.25;
 }
+
+h1 { font-size: 1.35rem; }
+h2 { font-size: 1.15rem; }
+h3 { font-size: 1rem; }
+
+p { margin: 0 0 0.75rem; }
 
 a {
-  color: var(--brass);
+  color: var(--accent);
+  text-decoration: none;
 }
 
-/* Tabular numerals for every price, table and P&L figure – docs/BRAND.md's ledger rule.
-   Apply this class anywhere a number appears; never let a price render in proportional figures. */
-.num {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum' 1, 'lnum' 1;
-}
-
-/* --- Layout shell ------------------------------------------------------------------------------ */
-
-.shell {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-}
-
-header.site-header {
-  padding: 2.5rem 0 1.5rem;
-  border-bottom: 1px solid var(--hairline);
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-header.site-header .brand h1 {
-  font-size: 1.75rem;
-  color: var(--brass);
-}
-
-header.site-header .brand p {
-  margin: 0.35rem 0 0;
-  color: var(--text-dim);
-  font-size: 0.95rem;
-}
-
-main {
-  padding: 3rem 0 4rem;
-}
-
-footer.site-footer {
-  padding: 1.5rem 0 3rem;
-  border-top: 1px solid var(--hairline);
-  color: var(--text-dim);
-  font-size: 0.85rem;
-}
-
-footer.site-footer a {
-  color: var(--text-dim);
+a:hover {
   text-decoration: underline;
 }
 
-/* --- Theme toggle -------------------------------------------------------------------------- */
+code, kbd {
+  font-family: var(--mono);
+  font-size: 0.86em;
+}
 
-.theme-toggle {
-  background: transparent;
-  border: 1px solid var(--hairline);
-  color: var(--text-dim);
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
   border-radius: var(--radius-sm);
-  padding: 0.4rem 0.75rem;
-  font-family: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+/* Every number, id and column label is mono with tabular figures – docs/BRAND.md's type rule.
+   Never let a price render in the proportional sans. */
+.num, .mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.dim { color: var(--text-2); }
+.dimmer { color: var(--text-3); }
+.pos { color: var(--gain); }
+.neg { color: var(--loss); }
+.buy-c { color: var(--buy); }
+.sell-c { color: var(--sell); }
+
+/* Uppercase micro-label above a figure or beside a value. */
+.label {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  display: block;
+}
+
+/* --- App shell ------------------------------------------------------------------------------- */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.wordmark {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--text);
+  text-transform: uppercase;
+  text-decoration: none;
   flex-shrink: 0;
 }
 
-.theme-toggle:hover {
-  border-color: var(--brass-dim);
+.wordmark:hover { text-decoration: none; }
+
+.wordmark .tick {
+  color: var(--accent);
+  text-shadow: var(--glow-accent);
+}
+
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.topnav::-webkit-scrollbar { display: none; }
+
+.topnav a {
+  color: var(--text-2);
+  font-size: 0.86rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  transition: color var(--transition), background var(--transition);
+}
+
+.topnav a:hover {
+  color: var(--text);
+  background: var(--surface-2);
+  text-decoration: none;
+}
+
+.topnav a[aria-current="page"] {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Search trigger – the fix for the site's worst previous failure, per docs/BRAND.md's layout
+   section: every one of the bazaar's ~2000 products is reachable from every page. */
+.search-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.65rem;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.search-trigger:hover {
+  border-color: var(--line-strong);
+  color: var(--text-2);
+}
+
+/* An inline SVG with no width/height attributes falls back to 300x150, which is what made this
+   control swallow the top bar – size it explicitly and keep the label on one line. */
+.search-trigger svg { width: 14px; height: 14px; flex: none; display: block; }
+.search-trigger .search-label { white-space: nowrap; }
+
+.search-trigger .kbd {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0.05rem 0.28rem;
+  color: var(--text-3);
+}
+
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+  padding: 0;
+}
+
+.icon-btn:hover {
+  border-color: var(--line-strong);
   color: var(--text);
 }
 
-/* --- Component: button (primary) -------------------------------------------------------------
-   docs/BRAND.md: brass fill, ink text, 4px radius, no shadow. Hover adds a brass-dim border –
-   the fill never moves or glows. */
+.icon-btn svg { width: 15px; height: 15px; display: block; }
+
+.shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+.shell-narrow {
+  max-width: 720px;
+}
+
+main {
+  padding: 2rem 0 4rem;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.page-head .sub {
+  color: var(--text-2);
+  font-size: 0.9rem;
+  margin: 0.3rem 0 0;
+  max-width: 60ch;
+}
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  padding: 1.25rem 0 3rem;
+  color: var(--text-3);
+  font-size: 0.8rem;
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.site-footer a { color: var(--text-2); }
+
+/* --- Buttons --------------------------------------------------------------------------------- */
 
 .btn {
-  display: inline-block;
-  font-family: inherit;
-  font-size: 0.95rem;
-  font-weight: 600;
-  padding: 0.7rem 1.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--sans);
+  font-size: 0.86rem;
+  font-weight: 500;
+  padding: 0.5rem 0.9rem;
   border-radius: var(--radius-sm);
-  border: 1px solid transparent;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
   cursor: pointer;
   text-decoration: none;
   transition: border-color var(--transition), background var(--transition), color var(--transition);
 }
 
+.btn:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+  text-decoration: none;
+}
+
 .btn-primary {
-  background: var(--brass);
-  color: var(--ink);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06080C;
+  font-weight: 600;
 }
 
 .btn-primary:hover {
-  border-color: var(--brass-dim);
+  background: var(--accent);
+  border-color: var(--accent);
+  filter: brightness(1.08);
 }
 
-.btn-primary:disabled {
-  opacity: 0.5;
+.btn:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-.btn-secondary {
+.btn-sm {
+  font-size: 0.78rem;
+  padding: 0.32rem 0.6rem;
+}
+
+/* --- Tabs (signal type, chart range) --------------------------------------------------------- */
+
+.tabs {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.tab {
   background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.35rem 0.7rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition), border-color var(--transition);
+}
+
+.tab:hover {
   color: var(--text);
-  border-color: var(--hairline);
+  background: var(--surface-2);
 }
 
-.btn-secondary:hover {
-  border-color: var(--brass-dim);
+.tab[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--line-strong);
 }
 
-/* --- Component: card ----------------------------------------------------------------------
-   docs/BRAND.md: panel fill, 1px hairline border, 6-8px radius. Hover only if interactive:
-   background steps to panel-raised, no border colour change, no transform. */
+/* --- Cards / panels -------------------------------------------------------------------------- */
 
 .card {
-  background: var(--panel);
-  border: 1px solid var(--hairline);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 1.5rem;
-  transition: background var(--transition);
+  padding: 1.1rem 1.25rem;
 }
 
-.card.interactive:hover {
-  background: var(--panel-raised);
-  cursor: pointer;
+.card-tight { padding: 0.9rem 1rem; }
+
+.card h2, .card h3 { margin-bottom: 0.5rem; }
+
+.grid {
+  display: grid;
+  gap: 0.75rem;
 }
 
-/* --- Component: table row -------------------------------------------------------------------
-   docs/BRAND.md: no card chrome on data tables – a hairline under each row, panel-raised on
-   hover, numeric columns right-aligned with tabular figures, never centred. */
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
+.grid-4 { grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); }
+
+/* A single labelled figure. The value is always mono; colour only if it carries meaning. */
+.stat .value {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  display: block;
+  margin-top: 0.15rem;
+}
+
+.stat .value.lg { font-size: 1.6rem; }
+.stat .value.accent { color: var(--accent); text-shadow: var(--glow-accent); }
+.stat .value.buy-c { text-shadow: var(--glow-buy); }
+.stat .value.sell-c { text-shadow: var(--glow-sell); }
+.stat .note { color: var(--text-3); font-size: 0.75rem; margin: 0.15rem 0 0; }
+
+/* --- Tables ---------------------------------------------------------------------------------- */
+
+.table-wrap {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.table-scroll { overflow-x: auto; }
 
 table.ledger {
   width: 100%;
   border-collapse: collapse;
+  font-size: 0.86rem;
 }
 
 table.ledger th {
   text-align: left;
-  color: var(--text-dim);
+  color: var(--text-3);
+  font-family: var(--mono);
   font-weight: 500;
-  font-size: 0.8rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid var(--hairline);
+  letter-spacing: 0.08em;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
 }
+
+table.ledger th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+table.ledger th.sortable:hover { color: var(--text); }
+
+table.ledger th .arrow {
+  opacity: 0;
+  margin-left: 0.25rem;
+}
+
+table.ledger th[aria-sort] .arrow { opacity: 1; color: var(--accent); }
+table.ledger th[aria-sort] { color: var(--text); }
 
 table.ledger td {
-  padding: 0.7rem 0.75rem;
-  border-bottom: 1px solid var(--hairline);
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  vertical-align: top;
 }
 
-table.ledger tr {
+table.ledger tbody tr:last-child td { border-bottom: none; }
+
+table.ledger tbody tr {
   transition: background var(--transition);
 }
 
-table.ledger tbody tr:hover {
-  background: var(--panel-raised);
-}
+table.ledger tbody tr:hover { background: var(--surface-2); }
 
 table.ledger th.num,
 table.ledger td.num {
   text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-/* --- Component: live/pulsing element ---------------------------------------------------------
-   docs/BRAND.md: opacity oscillates brass between 100% and 70% on a slow (~2.5s) sine, one loop
-   only per state change – never an indefinite pulse. Applied via .is-pulsing, removed by JS once
-   the state settles (e.g. a device code moves from "pending" to "linked"). */
+table.ledger td.key { color: var(--text); }
+
+/* A wide table – the market's 13 snapshot columns – tightened so the whole order book fits the
+   content column instead of running off the right edge where the sort column can't be seen. */
+table.ledger.dense { font-size: 0.8rem; }
+table.ledger.dense th { padding: 0.5rem 0.4rem; letter-spacing: 0.04em; }
+table.ledger.dense td { padding: 0.5rem 0.4rem; }
+
+table.ledger td a { color: var(--text); }
+table.ledger td a:hover { color: var(--accent); }
+
+/* Expandable detail row – how every remaining contract field stays reachable without widening
+   the table past readability. docs/BRAND.md: nothing the worker returns is dropped. */
+tr.detail-row > td {
+  background: var(--surface-2);
+  padding: 0.9rem 1rem 1.1rem;
+  color: var(--text-2);
+}
+
+tr.detail-row[hidden] { display: none; }
+
+.expand-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  padding: 0 0.25rem;
+  line-height: 1;
+  transition: color var(--transition), transform var(--transition);
+}
+
+.expand-btn:hover { color: var(--text); }
+.expand-btn[aria-expanded="true"] { color: var(--accent); transform: rotate(90deg); }
+
+/* --- Inputs ---------------------------------------------------------------------------------- */
+
+.input {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.88rem;
+  padding: 0.45rem 0.7rem;
+  width: 100%;
+  transition: border-color var(--transition);
+}
+
+.input::placeholder { color: var(--text-3); }
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* --- Status dot ------------------------------------------------------------------------------ */
 
 .status-dot {
   display: inline-block;
-  width: 0.55rem;
-  height: 0.55rem;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
-  background: var(--brass);
+  background: var(--text-3);
+  flex-shrink: 0;
 }
 
-.status-dot.is-pulsing {
-  animation: lucrum-pulse 2.5s ease-in-out 1;
-}
-
-.status-dot.is-loss {
-  background: var(--loss);
-}
-
-.status-dot.is-gain {
-  background: var(--gain);
-}
+.status-dot.is-gain { background: var(--gain); box-shadow: var(--glow-buy); }
+.status-dot.is-loss { background: var(--loss); box-shadow: var(--glow-loss); }
+.status-dot.is-warn { background: var(--sell); box-shadow: var(--glow-sell); }
+.status-dot.is-pulsing { animation: lucrum-pulse 2.5s ease-in-out infinite; }
 
 @keyframes lucrum-pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.7; }
-  100% { opacity: 1; }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
+
+/* --- States ---------------------------------------------------------------------------------- */
+
+.loading-state,
+.empty-state {
+  color: var(--text-3);
+  font-size: 0.88rem;
+  padding: 1.25rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+}
+
+.error-state {
+  color: var(--text);
+  font-size: 0.88rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--loss);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.error-text {
+  color: var(--loss);
+  font-size: 0.84rem;
+  margin: 0.75rem 0 0;
+}
+
+.caveat {
+  color: var(--text-2);
+  font-size: 0.82rem;
+  border-left: 2px solid var(--sell);
+  padding-left: 0.7rem;
+  margin: 0.75rem 0 0;
+}
+
+/* --- Command palette (global item search) ---------------------------------------------------- */
+
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  justify-content: center;
+  padding: 12vh 1rem 1rem;
+}
+
+.palette-backdrop[hidden] { display: none; }
+
+.palette {
+  width: 100%;
+  max-width: 34rem;
+  max-height: 60vh;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.palette input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  padding: 0.85rem 1rem;
+  outline: none;
+}
+
+.palette input::placeholder { color: var(--text-3); }
+
+.palette-results {
+  overflow-y: auto;
+  padding: 0.35rem;
+  margin: 0;
+  list-style: none;
+}
+
+.palette-results li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: var(--text-2);
+}
+
+.palette-results li[aria-selected="true"] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.palette-results li .id {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
+.palette-foot {
+  border-top: 1px solid var(--line);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.72rem;
+  color: var(--text-3);
+  display: flex;
+  gap: 1rem;
+}
+
+/* --- Motion opt-out -------------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
-  .status-dot.is-pulsing {
-    animation: none;
-  }
   * {
     transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
 
-/* --- Home page ------------------------------------------------------------------------------ */
+/* --- Mobile ---------------------------------------------------------------------------------- */
 
-.hero h2 {
-  font-size: 2.1rem;
-  margin-bottom: 1rem;
-}
-
-.hero p {
-  color: var(--text-dim);
-  max-width: 34rem;
-  font-size: 1.02rem;
-}
-
-.hero .actions {
-  margin-top: 1.75rem;
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.notice {
-  margin-top: 3rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--hairline);
-  color: var(--text-dim);
-  font-size: 0.9rem;
-}
-
-/* --- Mobile --------------------------------------------------------------------------------- */
-
-@media (max-width: 520px) {
-  .shell {
-    padding: 0 1.1rem;
-  }
-  header.site-header {
-    flex-direction: column;
-  }
-  .hero h2 {
-    font-size: 1.6rem;
-  }
-  table.ledger th,
-  table.ledger td {
-    padding: 0.5rem 0.4rem;
-    font-size: 0.85rem;
-  }
+@media (max-width: 720px) {
+  .topbar-inner { gap: 0.75rem; padding: 0 0.9rem; }
+  .search-trigger .kbd,
+  .search-trigger .search-label { display: none; }
+  .search-trigger { padding: 0.35rem 0.5rem; }
+  .shell { padding: 0 0.9rem; }
+  main { padding: 1.5rem 0 3rem; }
 }

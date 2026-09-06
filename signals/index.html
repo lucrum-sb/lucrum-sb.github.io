@@ -4,53 +4,73 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Signals – Lucrum</title>
+  <meta name="description" content="Lucrum – bazaar intelligence for Hypixel SkyBlock." />
+  <!-- Theme resolution must run before css/main.css paints, per docs/BRAND.md's theme section –
+       see js/theme.js's top-of-file comment for why this is a plain script, not a module. -->
   <script src="../js/theme.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=JetBrains+Mono:wght@400..700&display=swap"
     rel="stylesheet"
   />
   <link rel="stylesheet" href="../css/main.css" />
   <link rel="stylesheet" href="../css/app.css" />
+
 </head>
-<body>
-  <div class="shell">
-    <header class="site-header">
-      <div class="brand">
-        <h1><a href="../index.html">Lucrum</a></h1>
-        <p>Bazaar intelligence for Hypixel SkyBlock</p>
+<body data-base="../">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <a class="wordmark" href="../index.html"><span class="tick">&#9642;</span> Lucrum</a>
+      <nav class="topnav" aria-label="Primary">
+        <a href="../market/">Market</a>
+        <a href="../signals/" aria-current="page">Signals</a>
+        <a href="../calendar/">Calendar</a>
+        <a href="../account/">Portfolio</a>
+        <a href="../status/">Status</a>
+      </nav>
+      <div class="topbar-actions">
+        <button class="search-trigger" id="search-trigger" type="button" aria-label="Find a bazaar item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+          <span class="search-label">Find an item</span>
+          <span class="kbd">&#8984;K</span>
+        </button>
+        <button class="icon-btn" id="theme-toggle" type="button"></button>
       </div>
-      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle colour theme">
-        Dark mode
-      </button>
-    </header>
-    <nav class="site-nav">
-      <a href="../signals/" aria-current="page">Signals</a>
-      <a href="../calendar/">Calendar</a>
-      <a href="../account/">My account</a>
-      <a href="../link/">Link account</a>
-    </nav>
+    </div>
+  </div>
+
+  <div class="shell">
+    <div class="status-strip" id="status-strip"></div>
 
     <main>
-      <div id="hero-slot">
-        <p class="loading-state">Loading the current best signal&hellip;</p>
+      <div class="page-head">
+        <div>
+          <h1>Signals</h1>
+          <p class="sub">
+            The worker's current theses, scored. Score is comparable within a type, not across
+            types. Expand a row for the full execution plan, sizing and risk figures.
+          </p>
+        </div>
       </div>
 
-      <div class="type-tabs" id="type-tabs" role="tablist" aria-label="Signal type">
-        <button class="type-tab" data-type="position" aria-pressed="true" type="button">Position</button>
-        <button class="type-tab" data-type="spread" aria-pressed="false" type="button">Spread</button>
-        <button class="type-tab" data-type="craft" aria-pressed="false" type="button">Craft</button>
-        <button class="type-tab" data-type="event" aria-pressed="false" type="button">Event</button>
+      <div id="hero-slot"><p class="loading-state">Loading the best-scoring signal&hellip;</p></div>
+
+      <div class="tabs" id="type-tabs" role="group" aria-label="Signal type" style="margin:1.5rem 0 0.9rem">
+        <button class="tab" data-type="position" aria-pressed="true" type="button">Position</button>
+        <button class="tab" data-type="spread" aria-pressed="false" type="button">Spread</button>
+        <button class="tab" data-type="craft" aria-pressed="false" type="button">Craft</button>
+        <button class="tab" data-type="event" aria-pressed="false" type="button">Event</button>
       </div>
 
-      <div id="table-slot">
-        <p class="loading-state">Loading signals&hellip;</p>
-      </div>
+      <div id="table-slot"><p class="loading-state">Loading signals&hellip;</p></div>
     </main>
 
     <footer class="site-footer">
-      <p>Score is comparable within a signal type, not across types. <a href="../index.html">Back to Lucrum</a></p>
+      <span>Bazaar intelligence for Hypixel SkyBlock</span>
+      <a href="../link/">Link your account</a>
+      <a href="../status/">Worker status</a>
+      <a href="https://seyvault.github.io" rel="noopener">SeyVault</a>
     </footer>
   </div>
 

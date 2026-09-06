@@ -4,65 +4,106 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Item – Lucrum</title>
+  <meta name="description" content="Lucrum – bazaar intelligence for Hypixel SkyBlock." />
+  <!-- Theme resolution must run before css/main.css paints, per docs/BRAND.md's theme section –
+       see js/theme.js's top-of-file comment for why this is a plain script, not a module. -->
   <script src="../js/theme.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=JetBrains+Mono:wght@400..700&display=swap"
     rel="stylesheet"
   />
   <link rel="stylesheet" href="../css/main.css" />
   <link rel="stylesheet" href="../css/app.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
 </head>
-<body>
-  <div class="shell shell-wide">
-    <header class="site-header">
-      <div class="brand">
-        <h1><a href="../index.html">Lucrum</a></h1>
-        <p>Bazaar intelligence for Hypixel SkyBlock</p>
+<body data-base="../">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <a class="wordmark" href="../index.html"><span class="tick">&#9642;</span> Lucrum</a>
+      <nav class="topnav" aria-label="Primary">
+        <a href="../market/" aria-current="page">Market</a>
+        <a href="../signals/">Signals</a>
+        <a href="../calendar/">Calendar</a>
+        <a href="../account/">Portfolio</a>
+        <a href="../status/">Status</a>
+      </nav>
+      <div class="topbar-actions">
+        <button class="search-trigger" id="search-trigger" type="button" aria-label="Find a bazaar item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+          <span class="search-label">Find an item</span>
+          <span class="kbd">&#8984;K</span>
+        </button>
+        <button class="icon-btn" id="theme-toggle" type="button"></button>
       </div>
-      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle colour theme">
-        Dark mode
-      </button>
-    </header>
-    <nav class="site-nav">
-      <a href="../signals/">Signals</a>
-      <a href="../calendar/">Calendar</a>
-      <a href="../account/">My account</a>
-      <a href="../link/">Link account</a>
-    </nav>
+    </div>
+  </div>
+
+  <div class="shell">
+    <div class="status-strip" id="status-strip"></div>
 
     <main>
-      <h2 class="item-title" id="item-title">&nbsp;</h2>
+      <div class="item-head">
+        <div>
+          <h1 id="item-title">&nbsp;</h1>
+          <span class="item-id num" id="item-id"></span>
+        </div>
+        <div class="tabs" id="range-tabs" role="group" aria-label="Chart range">
+          <button class="tab" data-range="1h" type="button" aria-pressed="false">1h</button>
+          <button class="tab" data-range="1d" type="button" aria-pressed="false">1d</button>
+          <button class="tab" data-range="1w" type="button" aria-pressed="true">1w</button>
+          <button class="tab" data-range="1M" type="button" aria-pressed="false">1M</button>
+          <button class="tab" data-range="3M" type="button" aria-pressed="false">3M</button>
+          <button class="tab" data-range="6M" type="button" aria-pressed="false">6M</button>
+        </div>
+      </div>
 
-      <div class="range-tabs" id="range-tabs" role="tablist" aria-label="Chart range">
-        <button class="type-tab" data-range="1h" type="button" aria-pressed="false">1h</button>
-        <button class="type-tab" data-range="1d" type="button" aria-pressed="true">1d</button>
-        <button class="type-tab" data-range="1w" type="button" aria-pressed="false">1w</button>
-        <button class="type-tab" data-range="1M" type="button" aria-pressed="false">1M</button>
-        <button class="type-tab" data-range="3M" type="button" aria-pressed="false">3M</button>
-        <button class="type-tab" data-range="6M" type="button" aria-pressed="false">6M</button>
+      <div class="quote-strip" id="quote-strip">
+        <p class="loading-state" style="border:none;padding:0;grid-column:1/-1">Loading the live quote&hellip;</p>
       </div>
 
       <div class="card chart-card" id="chart-card">
-        <div class="chart-wrap">
-          <canvas id="chart"></canvas>
-        </div>
+        <div class="chart-wrap"><canvas id="chart"></canvas></div>
         <div class="chart-legend">
-          <span><span class="swatch" style="background:var(--gain)"></span>Buy side (history)</span>
-          <span><span class="swatch" style="background:var(--loss)"></span>Sell side (history)</span>
-          <span><span class="swatch" style="background:var(--brass)"></span>Prediction</span>
-          <span><span class="swatch" style="background:var(--brass-dim)"></span>Uncertainty band</span>
+          <span class="buy-c"><span class="swatch" style="background:var(--buy)"></span>Buy side</span>
+          <span class="sell-c"><span class="swatch" style="background:var(--sell)"></span>Sell side</span>
+          <span style="color:var(--accent)"><span class="swatch dashed"></span>Prediction</span>
+          <span><span class="swatch" style="background:var(--line-strong)"></span>Uncertainty band</span>
         </div>
       </div>
 
-      <p class="confidence-note" id="confidence-note"></p>
-      <div id="event-notes"></div>
+      <div class="grid grid-2" style="margin-top:1rem">
+        <div class="card" id="model-card">
+          <h2>Model</h2>
+          <div id="model-body"><p class="loading-state" style="border:none;padding:0">Loading&hellip;</p></div>
+        </div>
+        <div class="card" id="events-card">
+          <h2>Event marks</h2>
+          <div id="events-body"><p class="loading-state" style="border:none;padding:0">Loading&hellip;</p></div>
+        </div>
+      </div>
+
+      <h2 class="section-heading">Signals on this item</h2>
+      <div id="item-signals"><p class="loading-state">Loading&hellip;</p></div>
+
+      <h2 class="section-heading">Model check</h2>
+      <p class="sub" style="margin-top:0">
+        Replays the same model from a point in the past with everything after it hidden, and scores
+        the curve against what actually happened. Run on demand – it is the most expensive call the
+        worker serves.
+      </p>
+      <div id="backtest-slot">
+        <button class="btn" id="backtest-btn" type="button">Run a 24-hour backtest</button>
+      </div>
     </main>
 
     <footer class="site-footer">
-      <p><a href="../signals/">Back to signals</a></p>
+      <span>Bazaar intelligence for Hypixel SkyBlock</span>
+      <a href="../link/">Link your account</a>
+      <a href="../status/">Worker status</a>
+      <a href="https://seyvault.github.io" rel="noopener">SeyVault</a>
     </footer>
   </div>
 

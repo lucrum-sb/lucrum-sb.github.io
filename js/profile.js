@@ -4,15 +4,9 @@
 // deviation from CONTRACTS.md's illustrative `/p/<ign>` example, not from the endpoint contract
 // itself, which is keyed by uuid).
 import { callWorker, WorkerUnreachableError } from './api.js';
-import { renderErrorState } from './errors.js';
+import { renderErrorState, classifyFailure } from './errors.js';
 import { renderProfile } from './portfolio-render.js';
-
-const toggle = document.getElementById('theme-toggle');
-function syncToggleLabel() {
-  toggle.textContent = window.LucrumTheme.current() === 'dark' ? 'Light mode' : 'Dark mode';
-}
-syncToggleLabel();
-toggle.addEventListener('click', () => { window.LucrumTheme.toggle(); syncToggleLabel(); });
+import './shell.js';
 
 const slot = document.getElementById('profile-slot');
 const params = new URLSearchParams(window.location.search);
@@ -31,18 +25,11 @@ async function load() {
     throw err;
   }
   const { status, body } = res;
-  if (status === 403 && body.code === 'PORTFOLIO_PRIVATE') {
-    renderErrorState(slot, 'portfolio_private');
-    return;
-  }
-  if (status === 404) {
-    renderErrorState(slot, 'profile_not_found', { uuid });
-    return;
-  }
   if (status !== 200) {
-    renderErrorState(slot, 'unknown');
+    renderErrorState(slot, classifyFailure(null, body) || 'unknown', { uuid });
     return;
   }
+  document.title = `${body.ign || 'Portfolio'} – Lucrum`;
   renderProfile(slot, body);
 }
 

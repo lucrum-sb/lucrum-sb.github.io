@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Portfolio – Lucrum</title>
+  <title>Status – Lucrum</title>
   <meta name="description" content="Lucrum – bazaar intelligence for Hypixel SkyBlock." />
   <!-- Theme resolution must run before css/main.css paints, per docs/BRAND.md's theme section –
        see js/theme.js's top-of-file comment for why this is a plain script, not a module. -->
@@ -27,7 +27,7 @@
         <a href="../signals/">Signals</a>
         <a href="../calendar/">Calendar</a>
         <a href="../account/">Portfolio</a>
-        <a href="../status/">Status</a>
+        <a href="../status/" aria-current="page">Status</a>
       </nav>
       <div class="topbar-actions">
         <button class="search-trigger" id="search-trigger" type="button" aria-label="Find a bazaar item">
@@ -42,7 +42,18 @@
 
   <div class="shell">
     <main>
-      <div id="profile-slot"><p class="loading-state">Loading profile&hellip;</p></div>
+      <div class="page-head">
+        <div>
+          <h1>Worker status</h1>
+          <p class="sub">
+            Ingest health straight from <code>GET /health</code> and <code>GET /version</code>.
+            A gap here means history has a hole in it, which quietly degrades every prediction
+            that spans it – so it is shown rather than smoothed over.
+          </p>
+        </div>
+      </div>
+
+      <div id="status-body"><p class="loading-state">Loading worker health&hellip;</p></div>
     </main>
 
     <footer class="site-footer">
@@ -53,6 +64,6 @@
     </footer>
   </div>
 
-  <script type="module" src="../js/profile.js"></script>
+  <script type="module" src="../js/status.js"></script>
 </body>
 </html>

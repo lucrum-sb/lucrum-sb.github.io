@@ -1,83 +1,146 @@
-// Item detail page – the signature element (docs/BRAND.md candidate #1): a single hairline chart,
-// live, quiet, brass-on-panel, styled to the token palette rather than reusing SeyVault's glow
-// plugin. Combines GET /history and GET /predict per docs/CONTRACTS.md's chart window contract.
-// No chart maths beyond drawing – the worker already returns downsampled, windowed data.
+// Item detail – the site's signature surface (docs/BRAND.md): a glowing hairline chart of
+// GET /history and GET /predict, plus every field the snapshot, the prediction, the signal list
+// and the backtest have to say about one product.
+//
+// No chart maths beyond drawing and windowing (CLAUDE.md hard rule 2). The window itself is
+// docs/CONTRACTS.md's chart window contract, taken from the worker's own `futureMs` rather than
+// guessed from the data extent: futureMs is 30% of the range span, so the "now" line lands at
+// exactly 70% of the plot width for every range.
 import { callWorker, WorkerUnreachableError } from './api.js';
-import { renderErrorState, classifyFailure } from './errors.js';
-import { formatCoins, formatPct, itemLabel, formatLocalTime } from './format.js';
-
-const toggle = document.getElementById('theme-toggle');
-function syncToggleLabel() {
-  toggle.textContent = window.LucrumTheme.current() === 'dark' ? 'Light mode' : 'Dark mode';
-}
-syncToggleLabel();
+import { renderErrorState, classifyFailure, failureText } from './errors.js';
+import { loadSnapshot } from './catalog.js';
+import { mountStatusStrip, itemHref } from './shell.js';
+import {
+  formatCoins, formatCoinsPrecise, formatCompact, formatInt, formatPct, formatPctSigned,
+  formatLocalTime, formatLocalShort, formatDuration, formatFillMinutes, formatHoldDays,
+  methodLabel, itemLabel, esc, signClass,
+} from './format.js';
 
 const params = new URLSearchParams(window.location.search);
-const itemId = params.get('id') || params.get('item');
-const title = document.getElementById('item-title');
+const itemId = (params.get('id') || params.get('item') || '').toUpperCase();
+
+const titleEl = document.getElementById('item-title');
+const idEl = document.getElementById('item-id');
+const quoteStrip = document.getElementById('quote-strip');
 const chartCard = document.getElementById('chart-card');
-const confidenceNote = document.getElementById('confidence-note');
-const eventNotes = document.getElementById('event-notes');
-const rangeTabs = document.querySelectorAll('#range-tabs .type-tab');
+const modelBody = document.getElementById('model-body');
+const eventsBody = document.getElementById('events-body');
+const signalsSlot = document.getElementById('item-signals');
+const backtestSlot = document.getElementById('backtest-slot');
+const rangeTabs = document.querySelectorAll('#range-tabs .tab');
 
-title.textContent = itemId ? itemLabel(itemId) : 'No item selected';
+/** Fallback window widths when /predict is unavailable and cannot supply futureMs. */
+const RANGE_MS = {
+  '1h': 3600e3, '1d': 86400e3, '1w': 7 * 86400e3, '1M': 30 * 86400e3,
+  '3M': 90 * 86400e3, '6M': 180 * 86400e3,
+};
 
+// 1w, not 1d: the 1d tier is bars_5m, which ingest/cron.js writes only for the 100 highest-volume
+// products (a D1 write-cap decision, not a bug), so it is empty for most of the catalogue. 1w reads
+// bars_1h, which covers every product – the default range has to be one that actually has data.
+let range = '1w';
 let chart = null;
-let range = '1d';
+let lastPayload = null; // { history, predict } – kept so a theme flip can repaint without refetching
+
+titleEl.textContent = itemId ? itemLabel(itemId) : 'No item selected';
+idEl.textContent = itemId;
+document.title = itemId ? `${itemLabel(itemId)} – Lucrum` : 'Item – Lucrum';
+
+const strip = mountStatusStrip(document.getElementById('status-strip'));
 
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-function tickFormat(ts, spanMs) {
-  const d = new Date(ts);
-  if (spanMs <= 26 * 3600000) {
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  }
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+function withAlpha(hex, alpha) {
+  const a = Math.round(alpha * 255).toString(16).padStart(2, '0');
+  return `${hex}${a}`;
 }
 
-/** Draws a solid "now" hairline and dashed event marks – Chart.js plugin API, no external
- * annotation plugin, so the visual weight stays exactly what docs/BRAND.md specifies. */
+/* --- Live quote --------------------------------------------------------------------------------
+   The snapshot fields were never shown before; a chart with no current quote beside it is half a
+   page. Everything here is verbatim from GET /snapshot. */
+
+function renderQuote(snap) {
+  const p = (snap.products || {})[itemId];
+  if (!p) {
+    quoteStrip.innerHTML = `<p class="dim" style="grid-column:1/-1;margin:0">${esc(failureText('item_not_found', { item: itemId }))}</p>`;
+    return;
+  }
+  const cell = (label, value, cls = '', note = '') => `
+    <div class="stat"><span class="label">${label}</span>
+      <span class="value ${cls}">${value}</span>
+      ${note ? `<p class="note">${note}</p>` : ''}
+    </div>`;
+  quoteStrip.innerHTML = [
+    cell('Instant buy', formatCoins(p.instantBuy), 'buy-c', `best order ${formatCoins(p.bestBuyOrder)}`),
+    cell('Instant sell', formatCoins(p.instantSell), 'sell-c', `best offer ${formatCoins(p.bestSellOffer)}`),
+    cell('Spread', formatCoins(p.spread), signClass(p.spread), formatPctSigned(p.spreadPct, 2)),
+    cell('Buy depth', formatCompact(p.buyVolume), '', `${formatInt(p.buyOrders)} orders`),
+    cell('Sell depth', formatCompact(p.sellVolume), '', `${formatInt(p.sellOrders)} orders`),
+    cell('Traded / week', formatCompact(p.sellMovingWeek), '', `${formatCompact(p.buyMovingWeek)} bought`),
+  ].join('');
+  strip.update({ taxRate: snap.taxRate, mayor: snap.mayor });
+}
+
+/* --- Chart -------------------------------------------------------------------------------------
+   Two plugins: `glow` gives every stroked series a halo in its own hue (the signature element,
+   scaled by the --glow token so the light theme switches it off), `chrome` draws the now-line and
+   the event marks. No annotation plugin, so the visual weight stays exactly what BRAND.md says. */
+
+function glowPlugin() {
+  return {
+    id: 'lucrumGlow',
+    beforeDatasetDraw(c, args) {
+      const ds = c.data.datasets[args.index];
+      if (!ds.glow) return;
+      const strength = Number(cssVar('--glow')) || 0;
+      if (!strength) return;
+      c.ctx.shadowColor = ds.borderColor;
+      c.ctx.shadowBlur = ds.glow * strength;
+    },
+    afterDatasetDraw(c) {
+      c.ctx.shadowBlur = 0;
+      c.ctx.shadowColor = 'transparent';
+    },
+  };
+}
+
 function chromePlugin(nowTs, events) {
   return {
     id: 'lucrumChrome',
-    afterDraw(c) {
+    afterDatasetsDraw(c) {
       const { ctx, chartArea, scales } = c;
       const x = scales.x;
       if (!x || !chartArea) return;
       ctx.save();
+      ctx.shadowBlur = 0;
 
-      // "Now" line, solid brass.
       const nowPx = x.getPixelForValue(nowTs);
       if (nowPx >= chartArea.left && nowPx <= chartArea.right) {
-        ctx.strokeStyle = cssVar('--brass');
-        ctx.globalAlpha = 0.7;
+        ctx.strokeStyle = cssVar('--accent');
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(nowPx, chartArea.top);
         ctx.lineTo(nowPx, chartArea.bottom);
         ctx.stroke();
+        ctx.fillStyle = cssVar('--accent');
+        ctx.font = '10px "JetBrains Mono", monospace';
+        ctx.fillText('now', nowPx + 4, chartArea.bottom - 4);
       }
 
-      // Event marks, dashed hairline, per docs/CONTRACTS.md's `/predict` events array.
       ctx.setLineDash([3, 3]);
-      ctx.font = '11px Inter, system-ui, sans-serif';
+      ctx.font = '10px "JetBrains Mono", monospace';
       for (const ev of events) {
         const px = x.getPixelForValue(ev.t);
         if (px < chartArea.left || px > chartArea.right) continue;
-        ctx.strokeStyle = cssVar('--hairline');
-        ctx.globalAlpha = 1;
+        ctx.strokeStyle = cssVar('--line-strong');
         ctx.beginPath();
         ctx.moveTo(px, chartArea.top);
         ctx.lineTo(px, chartArea.bottom);
         ctx.stroke();
-        ctx.fillStyle = cssVar('--text-dim');
-        ctx.save();
-        ctx.translate(px + 4, chartArea.top + 10);
-        ctx.rotate(0);
-        ctx.fillText(ev.fitted === false ? `${ev.label} (unfitted)` : ev.label, 0, 0);
-        ctx.restore();
+        ctx.fillStyle = cssVar('--text-3');
+        ctx.fillText(ev.fitted === false ? `${ev.label} (unfitted)` : ev.label, px + 4, chartArea.top + 11);
       }
       ctx.setLineDash([]);
       ctx.restore();
@@ -85,42 +148,60 @@ function chromePlugin(nowTs, events) {
   };
 }
 
-function buildChart(history, predict) {
-  const now = predict.now;
+function tickFormat(ts, spanMs) {
+  const d = new Date(ts);
+  if (spanMs <= 26 * 3600000) return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  if (spanMs <= 40 * 86400000) return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+}
+
+function buildChart({ history, predict }) {
   const bars = history.bars || [];
-  const buyHist = bars.map((b) => ({ x: b.t, y: b.bc }));
-  const sellHist = bars.map((b) => ({ x: b.t, y: b.sc }));
+  const now = predict ? predict.now : Date.now();
+  const futureMs = predict ? predict.futureMs : RANGE_MS[range] * 0.3;
+  const spanMs = futureMs / 0.3;
+  const windowStart = now - spanMs * 0.7;
+  const windowEnd = now + futureMs;
 
-  const buyPred = predict.buy.map((p) => ({ x: now + p.t, y: p.p }));
-  const sellPred = predict.sell.map((p) => ({ x: now + p.t, y: p.p }));
-  const buyLo = predict.buy.map((p) => ({ x: now + p.t, y: p.lo }));
-  const buyHi = predict.buy.map((p) => ({ x: now + p.t, y: p.hi }));
-  const sellLo = predict.sell.map((p) => ({ x: now + p.t, y: p.lo }));
-  const sellHi = predict.sell.map((p) => ({ x: now + p.t, y: p.hi }));
-
-  const spanMs = bars.length > 1 ? bars[bars.length - 1].t - bars[0].t : 3600000;
-  const events = (predict.events || []).map((e) => ({ ...e }));
-
-  const brass = cssVar('--brass');
-  const brassDim = cssVar('--brass-dim');
-  const gain = cssVar('--gain');
-  const loss = cssVar('--loss');
+  const buy = cssVar('--buy');
+  const sell = cssVar('--sell');
+  const line = cssVar('--line');
+  const lineStrong = cssVar('--line-strong');
   const text = cssVar('--text');
-  const textDim = cssVar('--text-dim');
-  const hairline = cssVar('--hairline');
-
-  const bandOpts = { pointRadius: 0, borderWidth: 0, fill: false, tension: 0.15 };
+  const textDim = cssVar('--text-3');
+  const surface = cssVar('--surface');
 
   const datasets = [
-    { label: 'Buy history', data: buyHist, borderColor: gain, borderWidth: 1.25, pointRadius: 0, tension: 0.1 },
-    { label: 'Sell history', data: sellHist, borderColor: loss, borderWidth: 1.25, pointRadius: 0, tension: 0.1 },
-    { label: 'Buy uncertainty hi', data: buyHi, ...bandOpts, borderColor: 'transparent' },
-    { label: 'Buy uncertainty lo', data: buyLo, ...bandOpts, borderColor: 'transparent', fill: '-1', backgroundColor: `${brassDim}33` },
-    { label: 'Sell uncertainty hi', data: sellHi, ...bandOpts, borderColor: 'transparent' },
-    { label: 'Sell uncertainty lo', data: sellLo, ...bandOpts, borderColor: 'transparent', fill: '-1', backgroundColor: `${brassDim}33` },
-    { label: 'Buy prediction', data: buyPred, borderColor: brass, borderDash: [5, 3], borderWidth: 1.5, pointRadius: 0, tension: 0.15 },
-    { label: 'Sell prediction', data: sellPred, borderColor: brass, borderDash: [2, 2], borderWidth: 1.5, pointRadius: 0, tension: 0.15 },
+    {
+      label: 'Buy', data: bars.map((b) => ({ x: b.t, y: b.bc })),
+      borderColor: buy, borderWidth: 1.5, pointRadius: 0, tension: 0.1, glow: 10,
+    },
+    {
+      label: 'Sell', data: bars.map((b) => ({ x: b.t, y: b.sc })),
+      borderColor: sell, borderWidth: 1.5, pointRadius: 0, tension: 0.1, glow: 10,
+    },
   ];
+
+  if (predict) {
+    const band = { pointRadius: 0, borderWidth: 0, borderColor: 'transparent', tension: 0.15, spanGaps: true };
+    const at = (p) => now + p.t;
+    datasets.push(
+      { label: 'Buy band hi', data: predict.buy.map((p) => ({ x: at(p), y: p.hi })), ...band },
+      { label: 'Buy band lo', data: predict.buy.map((p) => ({ x: at(p), y: p.lo })), ...band, fill: '-1', backgroundColor: withAlpha(buy, 0.1) },
+      { label: 'Sell band hi', data: predict.sell.map((p) => ({ x: at(p), y: p.hi })), ...band },
+      { label: 'Sell band lo', data: predict.sell.map((p) => ({ x: at(p), y: p.lo })), ...band, fill: '-1', backgroundColor: withAlpha(sell, 0.1) },
+      {
+        label: 'Buy forecast', data: predict.buy.map((p) => ({ x: at(p), y: p.p })),
+        borderColor: buy, borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, tension: 0.15, glow: 12,
+      },
+      {
+        label: 'Sell forecast', data: predict.sell.map((p) => ({ x: at(p), y: p.p })),
+        borderColor: sell, borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, tension: 0.15, glow: 12,
+      },
+    );
+  }
+
+  const events = predict ? (predict.events || []) : [];
 
   if (chart) chart.destroy();
   const canvas = document.getElementById('chart');
@@ -131,58 +212,231 @@ function buildChart(history, predict) {
       animation: false,
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+      interaction: { mode: 'index', intersect: false, axis: 'x' },
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: cssVar('--panel'),
+          backgroundColor: surface,
           titleColor: text,
           bodyColor: textDim,
-          borderColor: hairline,
+          borderColor: lineStrong,
           borderWidth: 1,
+          titleFont: { family: 'Inter, system-ui, sans-serif', weight: '600' },
+          bodyFont: { family: '"JetBrains Mono", monospace' },
+          padding: 10,
           callbacks: {
             title: (items) => (items[0] ? formatLocalTime(items[0].parsed.x) : ''),
             label: (item) => `${item.dataset.label}: ${formatCoins(item.parsed.y)}`,
           },
-          filter: (item) => !item.dataset.label.includes('uncertainty'),
+          filter: (item) => !item.dataset.label.includes('band'),
         },
       },
       scales: {
         x: {
           type: 'linear',
-          grid: { color: hairline, drawTicks: false },
-          border: { color: hairline },
-          ticks: { color: textDim, callback: (v) => tickFormat(v, spanMs), maxTicksLimit: 8 },
+          min: windowStart,
+          max: windowEnd,
+          grid: { color: line, drawTicks: false },
+          border: { color: line },
+          ticks: {
+            color: textDim, maxTicksLimit: 8, autoSkip: true,
+            font: { family: '"JetBrains Mono", monospace', size: 10 },
+            callback: (v) => tickFormat(v, spanMs),
+          },
         },
         y: {
-          grid: { color: hairline, drawTicks: false },
-          border: { color: hairline },
-          ticks: { color: textDim, callback: (v) => formatCoins(v) },
+          grid: { color: line, drawTicks: false },
+          border: { color: line },
+          ticks: {
+            color: textDim,
+            font: { family: '"JetBrains Mono", monospace', size: 10 },
+            callback: (v) => formatCompact(v),
+          },
         },
       },
     },
-    plugins: [chromePlugin(now, events)],
+    plugins: [glowPlugin(), chromePlugin(now, events)],
   });
-
-  confidenceNote.textContent = `Model confidence: ${formatPct(predict.confidence)}. Confidence falls when history is thin relative to the horizon, or when an unfitted event effect bends the curve materially.`;
-
-  eventNotes.innerHTML = '';
-  const unfitted = events.filter((e) => e.fitted === false);
-  if (unfitted.length) {
-    const p = document.createElement('p');
-    p.className = 'caveat';
-    p.textContent = `${unfitted.map((e) => e.label).join(', ')}: modelled with a conservative placeholder magnitude, not one measured from stored history.`;
-    eventNotes.appendChild(p);
-  }
 }
 
-async function load() {
-  if (!itemId) {
-    renderErrorState(chartCard, 'item_not_found');
+/* --- Model + events panels ---------------------------------------------------------------------- */
+
+function renderModel(predict, historyMeta) {
+  if (!predict) return;
+  const lastBuy = predict.buy[0];
+  const endBuy = predict.buy[predict.buy.length - 1];
+  const lastSell = predict.sell[0];
+  const endSell = predict.sell[predict.sell.length - 1];
+  const move = (a, b) => (a && b && a.p ? (b.p - a.p) / a.p : null);
+
+  const rows = [
+    ['Confidence', formatPct(predict.confidence), predict.confidence >= 0.5 ? '' : 'dim'],
+    ['Model', esc(predict.modelVersion || '–'), ''],
+    ['Horizon', formatDuration(predict.futureMs), ''],
+    ['Step', formatDuration(predict.stepMs), ''],
+    ['Buy at horizon', `${formatCoins(endBuy && endBuy.p)} <span class="${signClass(move(lastBuy, endBuy))}">${formatPctSigned(move(lastBuy, endBuy))}</span>`, ''],
+    ['Sell at horizon', `${formatCoins(endSell && endSell.p)} <span class="${signClass(move(lastSell, endSell))}">${formatPctSigned(move(lastSell, endSell))}</span>`, ''],
+    ['Bar width', historyMeta ? formatDuration(historyMeta.barMs) : '–', historyMeta ? '' : 'dim'],
+    ['Bars returned', historyMeta ? formatInt((historyMeta.bars || []).length) : 'none stored', historyMeta ? '' : 'dim'],
+  ];
+
+  modelBody.innerHTML = `
+    <div class="detail-grid">
+      ${rows.map(([l, v]) => `<div><span class="label">${l}</span><span class="value">${v}</span></div>`).join('')}
+    </div>
+    <p class="dim" style="font-size:0.8rem;margin:0.9rem 0 0">
+      Confidence falls when history is thin relative to the horizon, when residual volatility is
+      high, or when an unfitted event effect bends the curve materially.
+    </p>`;
+}
+
+function renderEvents(predict) {
+  const events = predict ? (predict.events || []) : [];
+  if (!events.length) {
+    eventsBody.innerHTML = `<p class="dim" style="margin:0">No modelled event moves this product over the next ${
+      predict ? esc(formatDuration(predict.futureMs)) : 'horizon'
+    }. The full schedule is on the <a href="../calendar/">calendar</a>.</p>`;
     return;
   }
-  chartCard.hidden = false;
-  let historyRes, predictRes;
+  eventsBody.innerHTML = `
+    <ul class="event-list">
+      ${events.map((e) => `
+        <li class="event-row" style="padding-left:0;padding-right:0">
+          <div>
+            <span class="event-name">${esc(e.label)}</span>
+            <span class="event-source">${esc(e.id)}${e.fitted === false ? ' · unfitted placeholder' : ' · fitted from history'}</span>
+          </div>
+          <div class="event-when">
+            <span class="event-countdown ${signClass(e.effect)}">${formatPctSigned(e.effect, 1)}</span>
+            <span class="event-time">${esc(formatLocalShort(e.t))}</span>
+          </div>
+        </li>`).join('')}
+    </ul>
+    ${events.some((e) => e.fitted === false) ? `<p class="caveat">${
+      esc(events.filter((e) => e.fitted === false).map((e) => e.label).join(', '))
+    }: modelled with a conservative placeholder magnitude, not one measured from stored history.</p>` : ''}`;
+}
+
+/* --- Signals on this item ------------------------------------------------------------------------ */
+
+async function renderItemSignals() {
+  const types = ['position', 'spread', 'craft', 'event'];
+  const results = await Promise.all(types.map(async (t) => {
+    try {
+      const { status, body } = await callWorker(`/signals?type=${t}&limit=50`);
+      return status === 200 ? (body.signals || []).filter((s) => s.item === itemId) : [];
+    } catch (err) {
+      return [];
+    }
+  }));
+  const found = results.flat();
+  if (!found.length) {
+    signalsSlot.innerHTML = `<p class="empty-state">No current signal on ${esc(itemLabel(itemId))}. <a href="../signals/">Browse everything the model does like &rarr;</a></p>`;
+    return;
+  }
+  signalsSlot.innerHTML = `
+    <div class="table-wrap"><div class="table-scroll"><table class="ledger">
+      <thead><tr>
+        <th>Type</th><th class="num">Entry</th><th class="num">Exit</th>
+        <th class="num">Net / unit</th><th class="num">Margin</th><th class="num">Qty</th><th class="num">Score</th>
+      </tr></thead>
+      <tbody>${found.map((s) => `
+        <tr>
+          <td class="key">${esc(s.type)}${s.direction ? ` <span class="type-badge ${esc(s.direction)}">${esc(s.direction)}</span>` : ''}
+            <span class="why-line">${esc(s.thesis || s.why)}</span>
+            ${s.holdDays ? `<span class="why-line">Hold ${esc(formatHoldDays(s.holdDays))}</span>` : ''}</td>
+          <td class="num buy-c">${formatCoins(s.entry.price)}<span class="why-line">${esc(methodLabel(s.entry.method))} · ${esc(formatFillMinutes(s.entry.estFillMinutes))}</span></td>
+          <td class="num sell-c">${formatCoins(s.exit.price)}<span class="why-line">${esc(methodLabel(s.exit.method))} · ${esc(formatFillMinutes(s.exit.estFillMinutes))}</span></td>
+          <td class="num ${signClass(s.netPerUnit)}">${formatCoinsPrecise(s.netPerUnit)}</td>
+          <td class="num ${signClass(s.marginPct)}">${formatPctSigned(s.marginPct)}</td>
+          <td class="num">${formatCompact(s.suggestedQty)}</td>
+          <td class="num">${s.score.toFixed(2)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div></div>`;
+}
+
+/* --- Backtest ------------------------------------------------------------------------------------
+   On demand: docs/CONTRACTS.md's /backtest replays the model with a clock that hides everything at
+   or after `from`, so it is the most expensive call the worker serves. A negative skill is a
+   failing result and is stated as one. */
+
+function renderBacktest(body) {
+  const m = body.metrics || {};
+  const skillNote = m.skill === null || m.skill === undefined
+    ? 'Skill is undefined here – the flat baseline made no error to improve on.'
+    : m.skill > 0
+      ? 'Positive skill: the model beat holding the last price flat over this window.'
+      : 'Negative skill: over this window the model was worse than assuming the price does not move.';
+  const cell = (label, value, cls = '', note = '') => `
+    <div class="stat"><span class="label">${label}</span><span class="value ${cls}">${value}</span>
+    ${note ? `<p class="note">${note}</p>` : ''}</div>`;
+
+  backtestSlot.innerHTML = `
+    <div class="card">
+      <div class="grid grid-4">
+        ${cell('Skill', m.skill === null || m.skill === undefined ? '–' : formatPctSigned(m.skill), signClass(m.skill), 'vs flat baseline')}
+        ${cell('MAE', formatCoinsPrecise(m.mae), '', `baseline ${formatCoinsPrecise(m.maeNaive)}`)}
+        ${cell('Directional', m.directionalAccuracy === null || m.directionalAccuracy === undefined ? '–' : formatPct(m.directionalAccuracy), '', 'right direction')}
+        ${cell('Net / unit', formatCoinsPrecise(m.netPnlPerUnit), signClass(m.netPnlPerUnit), 'simulated fills')}
+        ${cell('Trades', formatInt(m.trades), '', m.winRate === null || m.winRate === undefined ? 'no win rate' : `${formatPct(m.winRate)} won`)}
+        ${cell('Scored points', formatInt(body.points), '', `qty ${formatCompact(body.quantity)}`)}
+      </div>
+      <p class="dim" style="font-size:0.82rem;margin:1rem 0 0">${esc(skillNote)}</p>
+      <p class="dimmer" style="font-size:0.78rem;margin:0.4rem 0 0">
+        Replayed from ${esc(formatLocalTime(body.from))} over ${esc(formatDuration(body.futureMs))},
+        model ${esc(body.modelVersion || '–')}. Net per unit assumes both legs reach the top of
+        book, so read it alongside skill, not instead of it.
+      </p>
+      <p style="margin:0.9rem 0 0"><button class="btn btn-sm" id="backtest-btn" type="button">Run again</button></p>
+    </div>`;
+  wireBacktest();
+}
+
+function wireBacktest() {
+  const btn = document.getElementById('backtest-btn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Running…';
+    const from = Date.now() - 86400000;
+    try {
+      const { status, body } = await callWorker(`/backtest?item=${encodeURIComponent(itemId)}&from=${from}&range=1d`);
+      if (status !== 200) {
+        renderErrorState(backtestSlot, classifyFailure(null, body) || 'unknown', { item: itemId, range });
+        return;
+      }
+      renderBacktest(body);
+    } catch (err) {
+      renderErrorState(backtestSlot, 'unreachable');
+    }
+  });
+}
+
+/* --- Load ---------------------------------------------------------------------------------------- */
+
+function setRangePressed() {
+  rangeTabs.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.range === range)));
+}
+
+function chartShell() {
+  chartCard.innerHTML = `
+    <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    <div class="chart-legend">
+      <span class="buy-c"><span class="swatch" style="background:var(--buy)"></span>Buy side</span>
+      <span class="sell-c"><span class="swatch" style="background:var(--sell)"></span>Sell side</span>
+      <span><span class="swatch dashed"></span>Forecast</span>
+      <span><span class="swatch" style="background:var(--line-strong)"></span>Uncertainty band</span>
+    </div>`;
+}
+
+async function loadChart() {
+  if (!itemId) {
+    renderErrorState(chartCard, 'item_not_found', { item: '(none given)' });
+    return;
+  }
+  let historyRes;
+  let predictRes;
   try {
     [historyRes, predictRes] = await Promise.all([
       callWorker(`/history?item=${encodeURIComponent(itemId)}&range=${range}`),
@@ -191,47 +445,74 @@ async function load() {
   } catch (err) {
     if (err instanceof WorkerUnreachableError) {
       renderErrorState(chartCard, 'unreachable');
+      modelBody.innerHTML = '';
       return;
     }
     throw err;
   }
 
-  if (historyRes.status !== 200) {
-    renderErrorState(chartCard, classifyFailure(null, historyRes.body) || 'unknown', { item: itemId });
-    return;
-  }
-  if (predictRes.status !== 200) {
-    renderErrorState(chartCard, classifyFailure(null, predictRes.body) || 'unknown', { item: itemId });
+  // A missing prediction is not a missing page: the history still draws, and the model panel says
+  // in plain words why there is no curve. CLAUDE.md rule 6.
+  const predict = predictRes.status === 200 ? predictRes.body : null;
+  const history = historyRes.status === 200 ? historyRes.body : null;
+  const historyKind = history ? null : (classifyFailure(null, historyRes.body) || 'unknown');
+
+  // Nor is missing history: /history now returns whatever part of the window is actually stored
+  // (docs/CONTRACTS.md's coverage object) rather than refusing the whole request the moment the
+  // window reaches back further than storage does. INSUFFICIENT_HISTORY only survives for the
+  // genuinely empty case – zero stored bars anywhere in the window – where nothing but the
+  // forecast can be drawn. A trimmed-but-nonempty series still charts, against the real time
+  // axis, with the blank stretch on the left named rather than hidden or stretched to fill it.
+  if (!history && !predict) {
+    renderErrorState(chartCard, historyKind, { item: itemId, range });
+    modelBody.innerHTML = `<p class="dim" style="margin:0">${esc(failureText(historyKind, { item: itemId, range }))}</p>`;
+    eventsBody.innerHTML = '';
     return;
   }
 
-  // Rebuild chart-card innards in case a previous range failed and replaced them with an error.
-  if (!document.getElementById('chart')) {
-    chartCard.innerHTML = `
-      <div class="chart-wrap"><canvas id="chart"></canvas></div>
-      <div class="chart-legend">
-        <span><span class="swatch" style="background:var(--gain)"></span>Buy side (history)</span>
-        <span><span class="swatch" style="background:var(--loss)"></span>Sell side (history)</span>
-        <span><span class="swatch" style="background:var(--brass)"></span>Prediction</span>
-        <span><span class="swatch" style="background:var(--brass-dim)"></span>Uncertainty band</span>
-      </div>
-    `;
+  chartShell();
+  if (!history) {
+    const caveat = document.createElement('p');
+    caveat.className = 'caveat';
+    caveat.textContent = `${failureText(historyKind, { item: itemId, range })} Only the forecast is drawn – the line left of now is missing, not flat.`;
+    chartCard.insertBefore(caveat, chartCard.firstChild);
+  } else if (history.coverage && history.coverage.truncated) {
+    // Real bars, just fewer than the range asks for – state where they begin instead of implying
+    // the whole window is covered. CLAUDE.md rule 12: the time shown is the reader's local clock.
+    const caveat = document.createElement('p');
+    caveat.className = 'caveat';
+    caveat.textContent = `Stored history for ${itemLabel(itemId)} begins ${formatLocalTime(history.coverage.from)} – the range before that is blank, not flat.`;
+    chartCard.insertBefore(caveat, chartCard.firstChild);
   }
-  buildChart(historyRes.body, predictRes.body);
+  lastPayload = { history: history || { bars: [] }, predict };
+  buildChart(lastPayload);
+
+  if (predict) {
+    renderModel(predict, history);
+    renderEvents(predict);
+  } else {
+    const kind = classifyFailure(null, predictRes.body) || 'unknown';
+    modelBody.innerHTML = `<p class="dim" style="margin:0">${esc(failureText(kind, { item: itemId, range }))}</p>`;
+    eventsBody.innerHTML = '<p class="dim" style="margin:0">Event marks come with the prediction, which is unavailable for this range.</p>';
+  }
 }
 
 rangeTabs.forEach((btn) => {
   btn.addEventListener('click', () => {
     range = btn.dataset.range;
-    rangeTabs.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
-    load();
+    setRangePressed();
+    loadChart();
   });
 });
 
-toggle.addEventListener('click', () => {
-  window.LucrumTheme.toggle();
-  syncToggleLabel();
-  if (chart) load(); // re-theme by rebuilding with the new CSS variable values
-});
+// A canvas reads CSS variables at draw time, so it cannot re-theme the way the DOM does – repaint
+// from the payload already in hand rather than refetching.
+window.LucrumTheme.onChange(() => { if (lastPayload) buildChart(lastPayload); });
 
-load();
+setRangePressed();
+wireBacktest();
+loadChart();
+renderItemSignals();
+loadSnapshot().then(renderQuote).catch(() => {
+  quoteStrip.innerHTML = `<p class="dim" style="grid-column:1/-1;margin:0">${esc(failureText('unreachable'))}</p>`;
+});
