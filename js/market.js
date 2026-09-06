@@ -93,8 +93,9 @@ function render() {
     </div></div>
     ${view.length > shown ? `<div class="load-more"><button class="btn" id="more-btn" type="button">Show ${formatInt(Math.min(PAGE, view.length - shown))} more</button></div>` : ''}
     <p class="dimmer" style="font-size:0.75rem;margin-top:0.6rem">
-      Spread is the worker's own <span class="mono">bestSellOffer − bestBuyOrder</span>, shown with
-      its sign as returned – it is not recomputed here. Depth is the coins-worth resting on each
+      Spread is the worker's own <span class="mono">bestSellOffer − bestBuyOrder</span>, the
+      top-of-book gap a patient order pair captures – not the wider quick-quote gap between instant
+      buy and instant sell. It is not recomputed here. Depth is the coins-worth resting on each
       side; orders and offers are how many of them there are; bought and sold per week are the
       moving-week totals. The count of resting orders and offers behind each depth figure is on
       the item's own page, one click away, rather than a column here.
