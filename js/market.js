@@ -150,7 +150,7 @@ function render() {
     if (r.manipulationRisk >= 0.3) flags.push('elevated manipulation risk');
     return `<tr>
       <td class="key"><a href="${itemHref(r.id)}">${esc(itemLabel(r.id))}</a>
-        <span class="why-line">${esc(r.id)}${flags.length ? ` · ${esc(flags.join(' · '))}` : ''}</span></td>
+        <span class="why-line">${esc(r.id)} · <a class="watch-link" href="../alerts/?item=${encodeURIComponent(r.id)}">watch</a>${flags.length ? ` · ${esc(flags.join(' · '))}` : ''}</span></td>
       ${cells}
     </tr>`;
   }).join('');

@@ -574,3 +574,25 @@ table.ledger td.strong { color: var(--text); font-weight: 600; }
   .event-row .event-when { text-align: left; }
   .status-strip { gap: 0.9rem; }
 }
+
+/* Watchlist alerts (js/watchlist.js) – an in-page toast for every alert, notification or not. */
+.toast-host {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  gap: 0.5rem;
+  z-index: 50;
+  max-width: min(26rem, calc(100vw - 32px));
+}
+.toast {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  box-shadow: var(--glow-accent);
+}
+.why-line .watch-link { color: var(--text-3); }
+.why-line .watch-link:hover { color: var(--accent); }

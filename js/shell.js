@@ -5,6 +5,7 @@
 // the bazaar's ~2000 products has to be reachable from anywhere. `document.body.dataset.base`
 // carries the relative path back to the site root ('' at the root, '../' one level down), so the
 // same code links correctly from every depth without hard-coding an absolute origin.
+import { startWatchlist } from './watchlist.js';
 import { loadItemIds, searchItems } from './catalog.js';
 import { callWorker } from './api.js';
 import { itemLabel, formatAge, esc } from './format.js';
@@ -243,3 +244,5 @@ export function mountStatusStrip(el, extra = {}) {
 
 mountThemeToggle();
 mountSearch();
+// Watchlist alerts run on every page, so a rule set on /alerts/ fires wherever the viewer is.
+startWatchlist();
