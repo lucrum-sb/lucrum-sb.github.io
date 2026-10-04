@@ -9,7 +9,7 @@
 import { callWorker, WorkerUnreachableError } from './api.js';
 import { renderErrorState, classifyFailure } from './errors.js';
 import { mountStatusStrip } from './shell.js';
-import { formatDuration, formatLocalTime, formatInt, esc } from './format.js';
+import { formatDuration, formatLocalTime, formatLocalShort, formatInt, esc } from './format.js';
 
 const slot = document.getElementById('calendar-slot');
 const spanTabs = document.querySelectorAll('#span-tabs .tab');
@@ -184,12 +184,49 @@ async function load() {
 
 window.addEventListener('pagehide', () => clearInterval(tickHandle));
 
+/**
+ * The election in progress, from GET /model's `election` – who leads, with what share, and which
+ * perks the next term would bring. The projected perk windows are not drawn as calendar rows: they
+ * only happen if the leader wins, and the worker already folds them into event theses at that
+ * probability. Nothing renders outside election season.
+ */
+async function loadElection() {
+  const el = document.getElementById('election-slot');
+  if (!el) return;
+  try {
+    const { status, body } = await callWorker('/model');
+    const e = status === 200 ? body.election : null;
+    if (!e || !Array.isArray(e.candidates)) { el.innerHTML = ''; return; }
+    const perkText = (e.perks || []).map((p) => p.toLowerCase().replace(/_/g, ' ')).join(', ');
+    const rows = e.candidates.map((c) => `
+      <div class="election-row">
+        <span>${esc(c.name)}</span>
+        <span class="bar"><span style="width:${Math.round(c.share * 100)}%"></span></span>
+        <span class="num">${Math.round(c.share * 100)}%</span>
+      </div>`).join('');
+    el.innerHTML = `
+      <section class="card election-card">
+        <span class="label">Election in progress${e.year ? ` – year ${esc(String(e.year))}` : ''}</span>
+        <p style="margin:0.4rem 0 0.8rem">
+          <b>${esc(e.name)}</b> leads. If the vote holds, the term starting
+          <span class="mono">${esc(formatLocalShort(e.termStart))}</span> brings ${esc(perkText || 'no perks Lucrum models')}${e.minister && e.minister.name ? `, with ${esc(e.minister.name)} as minister` : ''}.
+          Signals that rely on it say so, and count it at ${Math.round(e.probability * 100)}%.
+        </p>
+        <div class="election-bars">${rows}</div>
+      </section>`;
+  } catch (err) {
+    el.innerHTML = '';
+  }
+}
+
 spanTabs.forEach((btn) => {
   btn.addEventListener('click', () => {
     days = Number(btn.dataset.days);
     spanTabs.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
     load();
+loadElection();
   });
 });
 
 load();
+loadElection();
