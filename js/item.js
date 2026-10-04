@@ -116,12 +116,12 @@ function renderQuote(snap) {
    the event marks. No annotation plugin, so the visual weight stays exactly what BRAND.md says. */
 
 function glowPlugin() {
+  const strength = Number(cssVar('--glow')) || 0; // read once per build – see chromePlugin
   return {
     id: 'lucrumGlow',
     beforeDatasetDraw(c, args) {
       const ds = c.data.datasets[args.index];
       if (!ds.glow) return;
-      const strength = Number(cssVar('--glow')) || 0;
       if (!strength) return;
       c.ctx.shadowColor = ds.borderColor;
       c.ctx.shadowBlur = ds.glow * strength;
@@ -138,6 +138,10 @@ function glowPlugin() {
 // chart at construction time, so the only way for the marker to keep moving after that is for the
 // draw call to read a value the ticker below can update in place.
 function chromePlugin(nowRef, events) {
+  // Theme colours read once per chart build, not on every frame: getComputedStyle is the most
+  // expensive call in this plugin and the marker redraws every second. A theme flip rebuilds the
+  // chart (buildChart), so the cache cannot go stale.
+  const colours = { accent: cssVar('--accent'), lineStrong: cssVar('--line-strong'), text3: cssVar('--text-3') };
   return {
     id: 'lucrumChrome',
     afterDatasetsDraw(c) {
@@ -149,13 +153,13 @@ function chromePlugin(nowRef, events) {
 
       const nowPx = x.getPixelForValue(nowRef.value);
       if (nowPx >= chartArea.left && nowPx <= chartArea.right) {
-        ctx.strokeStyle = cssVar('--accent');
+        ctx.strokeStyle = colours.accent;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(nowPx, chartArea.top);
         ctx.lineTo(nowPx, chartArea.bottom);
         ctx.stroke();
-        ctx.fillStyle = cssVar('--accent');
+        ctx.fillStyle = colours.accent;
         ctx.font = '10px "JetBrains Mono", monospace';
         ctx.fillText('now', nowPx + 4, chartArea.bottom - 4);
       }
@@ -165,12 +169,12 @@ function chromePlugin(nowRef, events) {
       for (const ev of events) {
         const px = x.getPixelForValue(ev.t);
         if (px < chartArea.left || px > chartArea.right) continue;
-        ctx.strokeStyle = cssVar('--line-strong');
+        ctx.strokeStyle = colours.lineStrong;
         ctx.beginPath();
         ctx.moveTo(px, chartArea.top);
         ctx.lineTo(px, chartArea.bottom);
         ctx.stroke();
-        ctx.fillStyle = cssVar('--text-3');
+        ctx.fillStyle = colours.text3;
         ctx.fillText(ev.fitted === false ? `${ev.label} (unfitted)` : ev.label, px + 4, chartArea.top + 11);
       }
       ctx.setLineDash([]);
@@ -248,6 +252,10 @@ function buildChart({ history, predict }) {
     data: { datasets },
     options: {
       animation: false,
+      // Every dataset is already {x, y} points in ascending x (built above), so Chart.js can skip
+      // its parse pass and its sort/uniqueness checks – the Phase 9 performance pass.
+      parsing: false,
+      normalized: true,
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false, axis: 'x' },
@@ -300,11 +308,14 @@ function buildChart({ history, predict }) {
   // of freezing at page-load time (CLAUDE.md rule 12). This is purely local redrawing – no worker
   // call of any kind – because 2026-09-06 already burned the whole day's D1 free-tier row-read
   // budget once; an auto-refresh loop on an open item page would reintroduce exactly that outage.
-  // `chart.update('none')` skips Chart.js's entry animation so the price lines do not re-draw
-  // themselves every second, only the marker moves.
+  // `chart.draw()` repaints with the existing layout: the axes are fixed to the window, so the
+  // full `update()` this used to call – re-parsing every dataset and re-laying-out both scales
+  // once a second – bought nothing. A hidden tab skips the repaint entirely; the marker is
+  // recomputed from the clock on the next visible tick, so it never shows a stale position.
   nowTicker = setInterval(() => {
+    if (document.hidden) return;
     nowRef.value = now + (Date.now() - buildTime);
-    chart.update('none');
+    chart.draw();
   }, 1000);
 }
 
