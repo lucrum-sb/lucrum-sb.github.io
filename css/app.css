@@ -338,6 +338,19 @@ table.ledger td.strong { color: var(--text); font-weight: 600; }
 .factor-bars .bar > span { display: block; height: 100%; background: var(--text-2); }
 .factor-bars .bar.is-low > span { background: var(--loss); box-shadow: var(--glow-loss); }
 
+/* Record-a-trade and close forms (account page) */
+.trade-card { margin-bottom: 1rem; }
+.trade-card summary { cursor: pointer; display: flex; gap: 0.8rem; align-items: baseline; flex-wrap: wrap; }
+.trade-form {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-top: 0.8rem;
+}
+.trade-form.inline { margin-top: 0; }
+.trade-form .error-text { flex-basis: 100%; margin: 0; }
+
 /* Election card on the calendar page */
 .election-card { margin-bottom: 1rem; }
 .election-bars { display: grid; gap: 0.3rem; max-width: 30rem; }

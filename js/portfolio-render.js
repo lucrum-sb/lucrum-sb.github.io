@@ -11,7 +11,7 @@ import {
   itemLabel, esc, signClass,
 } from './format.js';
 
-const TYPES = ['position', 'spread', 'craft', 'event'];
+const TYPES = ['position', 'spread', 'craft', 'event', 'npc'];
 
 function plannedActual(planned, actual, key, fmt = formatCoins) {
   const p = planned ? planned[key] : null;
@@ -24,7 +24,7 @@ function plannedActual(planned, actual, key, fmt = formatCoins) {
     </span>`;
 }
 
-function positionRow(pos, open, now) {
+function positionRow(pos, open, now, owner = false) {
   const held = open ? now - pos.openedAt : (pos.closedAt || now) - pos.openedAt;
   const net = pos.actual ? pos.actual.netPnl : null;
   return `
@@ -37,11 +37,19 @@ function positionRow(pos, open, now) {
       <td class="num">${plannedActual(pos.planned, pos.actual, 'entryPrice')}</td>
       ${open ? '' : `<td class="num">${plannedActual(pos.planned, pos.actual, 'exitPrice')}</td>`}
       ${open ? '' : `<td class="num ${signClass(net)}">${plannedActual(pos.planned, pos.actual, 'netPnl', formatCoinsPrecise)}</td>`}
-    </tr>`;
+      ${open && owner ? `<td class="num"><button class="btn btn-sm close-btn" type="button" data-id="${esc(pos.id)}" data-type="${esc(pos.type)}"
+        data-planned-exit="${pos.planned && pos.planned.exitPrice != null ? esc(String(pos.planned.exitPrice)) : ''}">Close</button></td>` : ''}
+    </tr>
+    ${open && owner ? `<tr class="detail-row close-row" id="close-${esc(pos.id)}" hidden><td colspan="4"></td></tr>` : ''}`;
 }
 
-/** Renders a full profile view into `container`. `data` is GET /portfolio/<uuid>'s body. */
-export function renderProfile(container, data) {
+/**
+ * Renders a full profile view into `container`. `data` is GET /portfolio/<uuid>'s body. With
+ * `opts.owner`, each open position gets a Close action that calls `opts.onClose(id, actual)` with
+ * the contract's `actual` exit object – the worker records it; nothing is computed here.
+ */
+export function renderProfile(container, data, opts = {}) {
+  const owner = !!opts.owner;
   const { ign, uuid, public: isPublic, stats = {}, open = [], closed = [] } = data;
   const now = Date.now();
 
@@ -75,8 +83,8 @@ export function renderProfile(container, data) {
     <h2 class="section-heading">Open positions</h2>
     ${open.length ? `
       <div class="table-wrap"><div class="table-scroll"><table class="ledger">
-        <thead><tr><th>Item</th><th class="num">Opened</th><th class="num">Entry</th></tr></thead>
-        <tbody>${open.map((p) => positionRow(p, true, now)).join('')}</tbody>
+        <thead><tr><th>Item</th><th class="num">Opened</th><th class="num">Entry</th>${owner ? '<th class="num"></th>' : ''}</tr></thead>
+        <tbody>${open.map((p) => positionRow(p, true, now, owner)).join('')}</tbody>
       </table></div></div>` : '<p class="empty-state">No open positions.</p>'}
 
     <h2 class="section-heading">Closed positions</h2>
@@ -93,6 +101,47 @@ export function renderProfile(container, data) {
     </p>`;
 
   startHeldTicker(container);
+  if (owner) wireCloseActions(container, opts.onClose);
+}
+
+/** The Close button opens an inline row asking for what actually happened – the exit price and
+ * method – because a realised figure is only ever a confirmed one (CLAUDE.md rule 13). */
+function wireCloseActions(container, onClose) {
+  container.querySelectorAll('.close-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const row = container.querySelector(`#close-${CSS.escape(btn.dataset.id)}`);
+      if (!row) return;
+      if (!row.hidden) { row.hidden = true; return; }
+      const npc = btn.dataset.type === 'npc';
+      row.querySelector('td').innerHTML = `
+        <form class="trade-form inline">
+          <label class="filter"><span class="label">Actual exit price</span>
+            <input class="input input-sm num" name="exitPrice" inputmode="decimal" required
+                   placeholder="${btn.dataset.plannedExit ? `planned ${esc(btn.dataset.plannedExit)}` : 'coins per unit'}" /></label>
+          <label class="filter"><span class="label">How it sold</span>
+            <select class="input input-sm" name="exitMethod">
+              <option value="sell_order"${npc ? '' : ' selected'}>Sell offer</option>
+              <option value="instant_sell">Instant sell</option>
+              <option value="npc_sell"${npc ? ' selected' : ''}>Sold to an NPC</option>
+            </select></label>
+          <button class="btn btn-sm btn-primary" type="submit">Record exit</button>
+          <span class="error-text" hidden></span>
+        </form>`;
+      row.hidden = false;
+      const form = row.querySelector('form');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const price = Number(String(form.exitPrice.value).replace(/,/g, ''));
+        const err = form.querySelector('.error-text');
+        if (!(price > 0)) { err.hidden = false; err.textContent = 'Enter the price each unit actually sold for.'; return; }
+        form.querySelector('button').disabled = true;
+        const message = await onClose(btn.dataset.id, {
+          exitPrice: price, exitMethod: form.exitMethod.value, confirmedBy: 'manual', confirmedAt: Date.now(),
+        });
+        if (message) { err.hidden = false; err.textContent = message; form.querySelector('button').disabled = false; }
+      });
+    });
+  });
 }
 
 /** An open position's holding time counts up live – CLAUDE.md rule 12. Closed positions carry a

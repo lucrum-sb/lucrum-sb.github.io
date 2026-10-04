@@ -142,7 +142,9 @@ function detailPanel(signal, meta) {
     ${craftSteps(signal)}
     ${factorBars(signal)}
     ${caveat ? `<p class="caveat">${esc(caveat)}</p>` : ''}
-    <p style="margin:0.9rem 0 0"><a href="${itemHref(signal.item)}">Chart, prediction and model check for ${esc(itemLabel(signal.item))} &rarr;</a></p>
+    <p style="margin:0.9rem 0 0;display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-sm track-btn" type="button" data-item="${esc(signal.item)}" data-type="${esc(signal.type)}">Track this trade</button>
+      <a href="${itemHref(signal.item)}">Chart, prediction and model check for ${esc(itemLabel(signal.item))} &rarr;</a></p>
   `;
 }
 
@@ -285,6 +287,24 @@ function renderTable() {
       if (key === sortKey) sortDir = -sortDir;
       else { sortKey = key; sortDir = key === 'item' ? 1 : -1; }
       renderTable();
+    });
+  });
+
+  // "Track this trade": hand the signal's plan to the account page, which asks for the actual fill.
+  tableSlot.querySelectorAll('.track-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const s = rows.find((x) => x.item === btn.dataset.item && x.type === btn.dataset.type);
+      if (!s) return;
+      const draft = {
+        item: s.item, type: s.type, qty: s.suggestedQty,
+        signalId: `${s.type}:${s.item}:${entry.generatedAt ?? ''}`,
+        planned: {
+          entryPrice: s.entry.price, entryMethod: s.entry.method,
+          ...(s.exit ? { exitPrice: s.exit.price, exitMethod: s.exit.method } : {}),
+        },
+      };
+      try { sessionStorage.setItem('lucrum-track-draft', JSON.stringify(draft)); } catch (err) { /* proceed anyway */ }
+      window.location.href = `${document.body.dataset.base}account/`;
     });
   });
 
