@@ -318,9 +318,17 @@ function renderModel(predict, historyMeta) {
   const endSell = predict.sell[predict.sell.length - 1];
   const move = (a, b) => (a && b && a.p ? (b.p - a.p) / a.p : null);
 
+  const basisText = (b) => {
+    if (!b) return '–';
+    if (b.shape === 'flat') return 'flat – nothing beat a flat line on this item\'s past';
+    const what = b.shape === 'reversion' ? 'reversion to the 72h median' : 'fitted cycles and drift';
+    return `${what} at ${formatPct(b.weight, 0)} – ${formatPct(b.improvement, 0)} less error than flat over ${b.origins} past windows`;
+  };
   const rows = [
     ['Confidence', formatPct(predict.confidence), predict.confidence >= 0.5 ? '' : 'dim'],
     ['Model', esc(predict.modelVersion || '–'), ''],
+    ['Buy curve rests on', esc(basisText(predict.basis && predict.basis.buy)), predict.basis && predict.basis.buy && predict.basis.buy.shape === 'flat' ? 'dim' : ''],
+    ['Sell curve rests on', esc(basisText(predict.basis && predict.basis.sell)), predict.basis && predict.basis.sell && predict.basis.sell.shape === 'flat' ? 'dim' : ''],
     ['Horizon', formatDuration(predict.futureMs), ''],
     ['Step', formatDuration(predict.stepMs), ''],
     ['Buy at horizon', `${formatCoins(endBuy && endBuy.p)} <span class="${signClass(move(lastBuy, endBuy))}">${formatPctSigned(move(lastBuy, endBuy))}</span>`, ''],
@@ -334,8 +342,11 @@ function renderModel(predict, historyMeta) {
       ${rows.map(([l, v]) => `<div><span class="label">${l}</span><span class="value">${v}</span></div>`).join('')}
     </div>
     <p class="dim" style="font-size:0.8rem;margin:0.9rem 0 0">
-      Confidence falls when history is thin relative to the horizon, when residual volatility is
-      high, or when an unfitted event effect bends the curve materially.
+      Every curve starts at the last price. It bends only where a shape beat a flat line on this
+      item's own history, or where a calendar event is modelled to move it – most bazaar prices
+      are sticky enough that "it stays here" is the honest forecast. Confidence falls when history
+      is thin relative to the horizon, when the price jumps a lot, or when an unfitted event
+      effect bends the curve materially.
     </p>`;
 }
 

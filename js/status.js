@@ -56,8 +56,10 @@ function sweepCard(sweep, now) {
   const verdict = m.skill === null || m.skill === undefined
     ? 'No run had a usable baseline, so there is no skill figure.'
     : m.skill > 0
-      ? `On average the forecast's error was ${formatPct(m.skill, 1)} smaller than assuming the price stays flat.`
-      : `The forecast is currently <b>worse than assuming the price stays flat</b> – its error was ${formatPct(-m.skill, 1)} larger on average. Treat the prediction line as unproven.`;
+      ? `Across every scored point, the forecast's total error was ${formatPct(m.skill, 1)} smaller than assuming the price stays flat.`
+      : m.skill === 0
+        ? 'The forecast currently matches assuming the price stays flat: for most items it found no shape that beat a flat line on their own history, so it draws one.'
+        : `The forecast is currently <b>worse than assuming the price stays flat</b> – its total error was ${formatPct(-m.skill, 1)} larger. Treat the prediction line as unproven.`;
   const skipped = (m.skipped || []).map((s) => `${formatInt(s.count)} ${esc(s.code)}`).join(', ');
   const worst = (sweep.byItem || []).filter((r) => r.skill !== null).sort((a, b) => a.skill - b.skill).slice(0, 5);
   return `
