@@ -119,6 +119,7 @@ const METHOD_LABEL = {
   instant_sell: 'instant',
   buy_order: 'order',
   sell_order: 'order',
+  npc_sell: 'sell to NPC',
 };
 
 export function methodLabel(method) {

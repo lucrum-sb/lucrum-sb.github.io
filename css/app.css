@@ -239,6 +239,115 @@
   padding: 0.9rem 0;
 }
 
+/* --- Player settings and filters (market, signals, plan) -------------------------------------- */
+
+.settings-bar {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  padding: 0.7rem 0.85rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.setting,
+.filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.setting .label,
+.filter .label { font-size: 0.68rem; }
+
+.setting-hint {
+  font-size: 0.72rem;
+  margin-left: auto;
+  align-self: center;
+}
+
+.input-sm {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.82rem;
+  min-width: 7rem;
+}
+
+.input-sm.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.input[aria-invalid="true"] { border-color: var(--loss); }
+
+select.input { cursor: pointer; }
+
+.filter-row {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+}
+
+.filter-row #market-search { max-width: 18rem; flex: 1 1 12rem; }
+
+.filter-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--text-2);
+  padding-bottom: 0.4rem;
+  cursor: pointer;
+}
+
+.filter-check input { accent-color: var(--accent); }
+.filter-check input:disabled + span { color: var(--text-3); }
+
+.view-note {
+  font-size: 0.8rem;
+  margin: 0 0 0.6rem;
+  max-width: 90ch;
+}
+
+table.ledger td.strong { color: var(--text); font-weight: 600; }
+
+/* The item cell carries the signal's `why` sentence; below this width it wraps into a ribbon. */
+#table-slot table.ledger td.key,
+#plan-slot table.ledger td.key { min-width: 18rem; max-width: 30rem; }
+
+/* Score breakdown in a signal's detail panel: one bar per factor, so "why is this ranked here" is
+   readable at a glance. Bars are grey; only a factor well below typical is coloured. */
+.factor-bars {
+  display: grid;
+  grid-template-columns: max-content 1fr max-content;
+  gap: 0.3rem 0.6rem;
+  align-items: center;
+  max-width: 28rem;
+  font-size: 0.78rem;
+}
+
+.factor-bars .bar {
+  height: 5px;
+  border-radius: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.factor-bars .bar > span { display: block; height: 100%; background: var(--text-2); }
+.factor-bars .bar.is-low > span { background: var(--loss); box-shadow: var(--glow-loss); }
+
+/* Plan page totals */
+.plan-totals { margin-bottom: 1rem; }
+
+@media (max-width: 640px) {
+  .settings-bar, .filter-row { gap: 0.6rem; }
+  .setting-hint { margin-left: 0; }
+  .input-sm { min-width: 0; width: 100%; }
+  .setting, .filter { flex: 1 1 8rem; }
+}
+
 /* --- Item detail ------------------------------------------------------------------------------ */
 
 .item-head {

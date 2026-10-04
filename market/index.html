@@ -25,6 +25,7 @@
       <nav class="topnav" aria-label="Primary">
         <a href="../market/" aria-current="page">Market</a>
         <a href="../signals/">Signals</a>
+        <a href="../plan/">Plan</a>
         <a href="../calendar/">Calendar</a>
         <a href="../account/">Portfolio</a>
         <a href="../status/">Status</a>
@@ -48,24 +49,51 @@
         <div>
           <h1>Market</h1>
           <p class="sub">
-            Every product in the worker's latest bazaar snapshot. Sort any column; click a row for
-            its chart, prediction and model check.
+            Every bazaar product, screened by what it earns per order slot after tax – not by its
+            margin. Click a row for its chart, prediction and model check.
           </p>
         </div>
       </div>
 
+      <div id="settings-bar"></div>
+
       <div class="market-controls">
-        <input class="input" id="market-search" type="search" autocomplete="off" spellcheck="false"
-               placeholder="Filter by name or id" aria-label="Filter products" />
-        <div class="tabs" id="market-filters" role="group" aria-label="Volume filter">
-          <button class="tab" data-filter="all" aria-pressed="true" type="button">All</button>
-          <button class="tab" data-filter="10k" aria-pressed="false" type="button">Weekly vol &gt; 10k</button>
-          <button class="tab" data-filter="1m" aria-pressed="false" type="button">Weekly vol &gt; 1M</button>
+        <div class="tabs" id="market-views" role="group" aria-label="View">
+          <button class="tab" data-view="worth" aria-pressed="true" type="button">Worth a slot</button>
+          <button class="tab" data-view="flips" aria-pressed="false" type="button">All flips</button>
+          <button class="tab" data-view="npc" aria-pressed="false" type="button">NPC sells</button>
+          <button class="tab" data-view="all" aria-pressed="false" type="button">All products</button>
         </div>
         <span class="result-count" id="result-count"></span>
       </div>
 
-      <div id="market-slot"><p class="loading-state">Loading the bazaar snapshot&hellip;</p></div>
+      <div class="filter-row">
+        <input class="input" id="market-search" type="search" autocomplete="off" spellcheck="false"
+               placeholder="Filter by name or id" aria-label="Filter products" />
+        <label class="filter">
+          <span class="label">Min price</span>
+          <input class="input input-sm num" id="f-min-price" inputmode="decimal" autocomplete="off" placeholder="e.g. 100" />
+        </label>
+        <label class="filter">
+          <span class="label">Min net / slot-hour</span>
+          <input class="input input-sm num" id="f-min-slot" inputmode="decimal" autocomplete="off" placeholder="100k" />
+        </label>
+        <label class="filter">
+          <span class="label">Max risk</span>
+          <select class="input input-sm" id="f-max-risk">
+            <option value="">Any</option>
+            <option value="0.1">0.10</option>
+            <option value="0.3">0.30</option>
+            <option value="0.5">0.50</option>
+          </select>
+        </label>
+        <label class="filter filter-check">
+          <input type="checkbox" id="f-affordable" />
+          <span>Fits my capital</span>
+        </label>
+      </div>
+
+      <div id="market-slot"><p class="loading-state">Loading the market&hellip;</p></div>
     </main>
 
     <footer class="site-footer">

@@ -10,8 +10,24 @@ import {
   formatCoins, formatCoinsPrecise, formatPct, formatPctSigned, formatInt, formatCompact,
   formatHoldDays, formatFillMinutes, methodLabel, itemLabel, esc, signClass,
 } from './format.js';
+import { getSettings, mountSettingsBar, onSettingsChange } from './settings.js';
 
-const TYPES = ['position', 'spread', 'craft', 'event'];
+const TYPES = ['position', 'spread', 'craft', 'event', 'npc'];
+
+/** Factor names as a reader would say them – the keys are docs/CONTRACTS.md's `factors`. */
+const FACTOR_LABEL = {
+  margin: 'Margin after tax',
+  plausible: 'Margin plausibility',
+  fill: 'Both legs fill',
+  liquid: 'Liquidity',
+  clean: 'No manipulation',
+  scale: 'Earnings per order / slot',
+  effort: 'Earnings per hour of clicking',
+  capacity: 'Market throughput',
+  capital: 'Capital turnover',
+  patience: 'Hold length',
+  conviction: 'Measured, not guessed',
+};
 const heroSlot = document.getElementById('hero-slot');
 const tableSlot = document.getElementById('table-slot');
 const tabs = document.querySelectorAll('#type-tabs .tab');
@@ -69,6 +85,29 @@ function craftSteps(signal) {
     </div>`;
 }
 
+const BINDING_LABEL = {
+  flow: 'market flow in the patience window',
+  capital: 'your capital',
+  'order-cap': 'the order cap',
+  throughput: 'craft throughput',
+  'npc-cap': 'the daily NPC sell cap',
+};
+
+/** One bar per score factor, so the ranking explains itself. The worker computes every value. */
+function factorBars(signal) {
+  const f = signal.factors;
+  if (!f) return '';
+  const rows = Object.entries(f).map(([key, v]) => `
+    <span class="dim">${esc(FACTOR_LABEL[key] || key)}</span>
+    <span class="bar${v < 0.35 ? ' is-low' : ''}"><span style="width:${Math.round(Math.max(0, Math.min(1, v)) * 100)}%"></span></span>
+    <span class="num">${v.toFixed(2)}</span>`).join('');
+  return `
+    <div class="detail-section">
+      <span class="label">Score breakdown – the score is the product of these</span>
+      <div class="factor-bars">${rows}</div>
+    </div>`;
+}
+
 function detailPanel(signal, meta) {
   const caveat = fittedCaveat(signal);
   const fields = [];
@@ -79,8 +118,16 @@ function detailPanel(signal, meta) {
   push('Net / unit', formatCoinsPrecise(signal.netPerUnit));
   push('Tax at scoring', meta.taxRate === undefined ? '–' : formatPct(meta.taxRate, 2));
   push('Suggested qty', formatInt(signal.suggestedQty));
-  push('Capital at entry', signal.suggestedQty && signal.entry ? formatCoins(signal.suggestedQty * signal.entry.price) : '–');
-  push('Est. net at qty', signal.suggestedQty ? formatCoins(signal.suggestedQty * signal.netPerUnit) : '–');
+  const cap = signal.capacity;
+  if (cap) {
+    push('Orders', `${formatInt(cap.orders)}${cap.sellOffers ? ` + ${formatInt(cap.sellOffers)} sell offer${cap.sellOffers === 1 ? '' : 's'}` : ''} · ${formatInt(cap.unitsPerOrder)} / order`);
+    push('Capital tied up', formatCoins(cap.capital));
+    push('Net at qty', formatCoins(cap.net));
+    push('Net / order', formatCoins(cap.netPerOrder));
+    push('Net / slot-hour', cap.netPerSlotHour === null ? '–' : formatCoins(cap.netPerSlotHour));
+    push('Hands-on time', `${cap.activeMinutes} min · ${cap.netPerActiveHour === null ? '–' : `${formatCompact(cap.netPerActiveHour)} / hour`}`);
+    push('Sized by', esc(BINDING_LABEL[cap.binding] || cap.binding));
+  }
   if (signal.holdDays) push('Hold', esc(formatHoldDays(signal.holdDays)));
   push('Liquidity', riskBar(signal.liquidityScore, true));
   push('Manipulation risk', riskBar(signal.manipulationRisk, false));
@@ -93,6 +140,7 @@ function detailPanel(signal, meta) {
     ${signal.thesis ? `<p style="margin:0 0 0.9rem;max-width:78ch">${esc(signal.thesis)}</p>` : ''}
     <div class="detail-grid">${fields.join('')}</div>
     ${craftSteps(signal)}
+    ${factorBars(signal)}
     ${caveat ? `<p class="caveat">${esc(caveat)}</p>` : ''}
     <p style="margin:0.9rem 0 0"><a href="${itemHref(signal.item)}">Chart, prediction and model check for ${esc(itemLabel(signal.item))} &rarr;</a></p>
   `;
@@ -137,7 +185,7 @@ function renderHero() {
     <p class="thesis">${esc(best.thesis || best.why)}</p>
     <div class="hero-figures">
       <div class="stat"><span class="label">Score</span><span class="value lg accent">${best.score.toFixed(2)}</span></div>
-      <div class="stat"><span class="label">Net / unit</span><span class="value lg ${signClass(best.netPerUnit)}">${formatCoins(best.netPerUnit)}</span></div>
+      <div class="stat"><span class="label">Net / order</span><span class="value lg ${signClass(best.netPerUnit)}">${best.capacity ? formatCompact(best.capacity.netPerOrder) : formatCoins(best.netPerUnit)}</span><p class="note">${formatCoins(best.netPerUnit)} a unit</p></div>
       <div class="stat"><span class="label">Margin</span><span class="value lg ${signClass(best.marginPct)}">${formatPctSigned(best.marginPct)}</span></div>
       <div class="stat"><span class="label">Entry</span><span class="value buy-c">${formatCoins(best.entry.price)}</span><p class="note">${esc(methodLabel(best.entry.method))} · ${esc(formatFillMinutes(best.entry.estFillMinutes))}</p></div>
       <div class="stat"><span class="label">Exit</span><span class="value sell-c">${formatCoins(best.exit.price)}</span><p class="note">${esc(methodLabel(best.exit.method))} · ${esc(formatFillMinutes(best.exit.estFillMinutes))}</p></div>
@@ -158,8 +206,9 @@ const COLUMNS = [
   { key: 'exit', label: 'Exit', num: true, get: (s) => (s.exit ? s.exit.price : null) },
   { key: 'netPerUnit', label: 'Net / unit', num: true },
   { key: 'marginPct', label: 'Margin', num: true },
+  { key: 'netPerOrder', label: 'Net / order', num: true, get: (s) => s.capacity?.netPerOrder ?? null, title: 'Net coins one order earns at the suggested size – what the 71,680-unit order cap leaves of the margin.' },
+  { key: 'netPerActiveHour', label: 'Per hour played', num: true, get: (s) => s.capacity?.netPerActiveHour ?? null, title: 'Net coins per hour of hands-on time: GUI actions, relists, inventory loads.' },
   { key: 'suggestedQty', label: 'Qty', num: true },
-  { key: 'liquidityScore', label: 'Liq', num: true },
   { key: 'score', label: 'Score', num: true },
 ];
 
@@ -198,7 +247,7 @@ function renderTable() {
   const head = COLUMNS.map((c) => {
     if (!c.key) return '<th style="width:1.6rem"></th>';
     const sorted = c.key === sortKey;
-    return `<th class="${c.num ? 'num ' : ''}sortable" data-key="${c.key}"${
+    return `<th class="${c.num ? 'num ' : ''}sortable" data-key="${c.key}"${c.title ? ` title="${esc(c.title)}"` : ''}${
       sorted ? ` aria-sort="${sortDir === -1 ? 'descending' : 'ascending'}"` : ''
     }>${c.label}<span class="arrow">${sorted && sortDir === 1 ? '↑' : '↓'}</span></th>`;
   }).join('');
@@ -212,8 +261,9 @@ function renderTable() {
       <td class="num sell-c">${legCell(s.exit)}</td>
       <td class="num ${signClass(s.netPerUnit)}">${formatCoins(s.netPerUnit)}</td>
       <td class="num ${signClass(s.marginPct)}">${formatPctSigned(s.marginPct)}</td>
+      <td class="num strong">${s.capacity ? formatCompact(s.capacity.netPerOrder) : '–'}</td>
+      <td class="num">${s.capacity?.netPerActiveHour ? formatCompact(s.capacity.netPerActiveHour) : '–'}</td>
       <td class="num">${formatCompact(s.suggestedQty)}</td>
-      <td class="num">${s.liquidityScore === undefined ? '–' : s.liquidityScore.toFixed(2)}</td>
       <td class="num">${s.score.toFixed(2)}</td>
     </tr>
     <tr class="detail-row" id="d${i}" hidden><td colspan="${COLUMNS.length}">${detailPanel(s, entry)}</td></tr>
@@ -225,6 +275,7 @@ function renderTable() {
     </div></div>
     <p class="dimmer" style="font-size:0.75rem;margin-top:0.6rem">
       Score ranks within this type only – a craft's 0.70 and a position's 0.65 are not comparable.
+      ${getSettings().capital > 0 ? 'Sizes and scores are fitted to your capital.' : 'Set your capital above to size every trade to your bankroll.'}
     </p>
   `;
 
@@ -252,7 +303,8 @@ function renderTable() {
 
 async function loadType(type) {
   try {
-    const { status, body } = await callWorker(`/signals?type=${type}&limit=50`);
+    const { capital } = getSettings();
+    const { status, body } = await callWorker(`/signals?type=${type}&limit=50${capital > 0 ? `&capital=${capital}` : ''}`);
     if (status === 200) {
       byType[type] = { signals: body.signals || [], taxRate: body.taxRate, generatedAt: body.generatedAt };
     } else {
@@ -274,9 +326,21 @@ tabs.forEach((btn) => {
 });
 
 strip = mountStatusStrip(document.getElementById('status-strip'));
+mountSettingsBar(document.getElementById('settings-bar'));
 
-(async function init() {
+async function loadAll() {
   await Promise.all(TYPES.map(loadType));
   renderHero();
   renderTable();
-})();
+}
+
+let lastCapital = getSettings().capital;
+onSettingsChange((s) => {
+  if (s.capital === lastCapital) return;
+  lastCapital = s.capital;
+  for (const t of TYPES) delete byType[t];
+  renderTable();
+  loadAll();
+});
+
+loadAll();
