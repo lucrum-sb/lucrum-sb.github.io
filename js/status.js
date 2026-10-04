@@ -1,13 +1,14 @@
-// Worker status – GET /health and GET /version, neither of which the site read before. A gap in
-// ingest quietly degrades every prediction that spans it, so this page states gaps plainly rather
-// than reporting a green tick. docs/CONTRACTS.md's /health section: keep it honest, not
-// always-green.
+// Worker status – GET /health, GET /version and GET /model. A gap in ingest quietly degrades every
+// prediction that spans it, so this page states gaps plainly rather than reporting a green tick.
+// docs/CONTRACTS.md's /health section: keep it honest, not always-green. The same goes for the
+// model check: a negative skill or a sub-50% spread hit rate is stated as what it is.
 import { callWorker } from './api.js';
 import { renderErrorState, classifyFailure } from './errors.js';
 import { loadSnapshot } from './catalog.js';
-import { startAgeTicker } from './shell.js';
+import { startAgeTicker, itemHref } from './shell.js';
 import {
-  formatInt, formatCompact, formatAge, formatLocalTime, formatDuration, formatPct, esc,
+  formatInt, formatCompact, formatAge, formatLocalTime, formatDuration, formatPct, formatPctSigned,
+  itemLabel, signClass, esc,
 } from './format.js';
 
 const body = document.getElementById('status-body');
@@ -45,7 +46,106 @@ function gapStrip(gaps, now) {
     </p>`;
 }
 
-function render(health, version, snap) {
+/** docs/PLAN.md Phase 5: the sweep's skill is reported honestly – negative means the forecast lost
+ * to "the price stays where it is", and the page says so in words rather than just a red number. */
+function sweepCard(sweep, now) {
+  if (!sweep) {
+    return '<p class="dim" style="margin:0">No backtest sweep has run yet. The worker runs one daily over stored hourly bars.</p>';
+  }
+  const m = sweep.summary || {};
+  const verdict = m.skill === null || m.skill === undefined
+    ? 'No run had a usable baseline, so there is no skill figure.'
+    : m.skill > 0
+      ? `On average the forecast's error was ${formatPct(m.skill, 1)} smaller than assuming the price stays flat.`
+      : `The forecast is currently <b>worse than assuming the price stays flat</b> – its error was ${formatPct(-m.skill, 1)} larger on average. Treat the prediction line as unproven.`;
+  const skipped = (m.skipped || []).map((s) => `${formatInt(s.count)} ${esc(s.code)}`).join(', ');
+  const worst = (sweep.byItem || []).filter((r) => r.skill !== null).sort((a, b) => a.skill - b.skill).slice(0, 5);
+  return `
+    <div class="grid grid-4">
+      ${stat('Skill vs flat price', formatPctSigned(m.skill, 1), signClass(m.skill), `median ${formatPctSigned(m.medianSkill, 1)}`)}
+      ${stat('Direction right', formatPct(m.directionalAccuracy, 0), '', 'share of points where the forecast got the move\'s sign right')}
+      ${stat('Simulated trades', formatInt(m.trades), '', m.winRate === null || m.winRate === undefined ? 'no trades taken' : `${formatPct(m.winRate, 0)} won`)}
+      ${stat('Runs scored', formatInt(m.scored), '', skipped ? `skipped: ${skipped}` : `${formatInt(sweep.items)} items × ${formatInt(sweep.starts)} start points`)}
+    </div>
+    <p style="margin:0.9rem 0 0;max-width:78ch">${verdict}</p>
+    ${worst.length ? `<p class="dimmer" style="font-size:0.75rem;margin:0.5rem 0 0">Weakest items: ${worst.map((r) => `<a href="${itemHref(r.item)}">${esc(itemLabel(r.item))}</a> ${formatPctSigned(r.skill, 0)}`).join(' · ')}.</p>` : ''}
+    <p class="dimmer" style="font-size:0.75rem;margin:0.5rem 0 0">
+      Model ${esc(sweep.modelVersion || '–')}, ${esc(sweep.range)} horizon of ${esc(formatDuration(sweep.futureMs))},
+      start points from ${esc(formatLocalTime(sweep.window && sweep.window.from))} to ${esc(formatLocalTime(sweep.window && sweep.window.to))}.
+      Run <span data-age="${sweep.computedAt}">${esc(formatAge(sweep.computedAt, now))}</span>.
+    </p>`;
+}
+
+function spreadCard(spread, now) {
+  if (!spread) {
+    return '<p class="dim" style="margin:0">No spread hit-rate check has run yet. The worker runs one daily.</p>';
+  }
+  const below = spread.hitRate !== null && spread.hitRate < spread.bar;
+  return `
+    <div class="grid grid-3">
+      ${stat('Spread hit rate', formatPct(spread.hitRate, 0), spread.hitRate === null ? '' : below ? 'neg' : 'pos', `bar is ${formatPct(spread.bar, 0)}`)}
+      ${stat('Signals checked', formatInt(spread.evaluated), '', `${formatInt(spread.hits)} still held, ${formatInt(spread.misses)} gone`)}
+      ${stat('Hours sampled', formatInt((spread.samples || []).filter((x) => x.ok).length), '', `of ${formatInt((spread.samples || []).length)} attempted`)}
+    </div>
+    <p style="margin:0.9rem 0 0;max-width:78ch">${spread.hitRate === null
+    ? 'No sample had both snapshots it needed, so there is no hit rate yet.'
+    : below
+      ? '<b>Below the bar.</b> Fewer than half of the top spread signals still cleared tax an hour later, which means spread scoring is ranking spreads that do not last.'
+      : 'Most of the top spread signals still cleared tax an hour after they were scored.'}</p>
+    <p class="dimmer" style="font-size:0.75rem;margin:0.5rem 0 0">
+      For each sampled hour: the top 20 spread signals at that moment, re-checked one hour later.
+      Run <span data-age="${spread.computedAt}">${esc(formatAge(spread.computedAt, now))}</span>.
+    </p>`;
+}
+
+function fitsCard(fits, now) {
+  if (!fits) {
+    return '<p class="dim" style="margin:0">Event magnitudes have not been fitted yet. Until they are, every event effect is a conservative placeholder and says so.</p>';
+  }
+  const rows = fits.entries.map((e) => `
+    <tr>
+      <td>${esc(itemLabel(e.event))}</td>
+      <td>${esc(itemLabel(e.group))}</td>
+      <td class="num ${signClass(e.magnitude)}">${formatPctSigned(e.magnitude, 1)}</td>
+      <td class="num">${formatInt(e.samples)}</td>
+      <td class="num">${formatInt(e.items)}</td>
+      <td>${e.fitted ? 'fitted' : '<span class="dimmer">too few windows – placeholder still used</span>'}</td>
+    </tr>`).join('');
+  return `
+    <p style="margin:0 0 0.9rem;max-width:78ch">
+      ${formatInt(fits.fitted)} of ${formatInt(fits.measured)} event-and-item-group effects are fitted from stored history.
+      The rest still use the registry's placeholder magnitudes until enough past windows exist.
+    </p>
+    ${rows ? `<div class="table-wrap"><div class="table-scroll"><table class="ledger">
+      <thead><tr><th>Event</th><th>Group</th><th class="num">Measured effect</th><th class="num">Windows</th><th class="num">Items</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div></div>` : ''}
+    <p class="dimmer" style="font-size:0.75rem;margin:0.5rem 0 0">
+      Fitted <span data-age="${fits.computedAt}">${esc(formatAge(fits.computedAt, now))}</span>. Mayor-perk events need terms recorded
+      by the election feed, so they fit as terms accumulate.
+    </p>`;
+}
+
+function modelSection(model, now) {
+  if (!model) {
+    return '<div class="card"><p class="dim" style="margin:0">The model report could not be loaded.</p></div>';
+  }
+  return `
+    <div class="card">
+      <span class="label" style="display:block;margin-bottom:0.9rem">Prediction backtest</span>
+      ${sweepCard(model.sweep, now)}
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <span class="label" style="display:block;margin-bottom:0.9rem">Spread signals</span>
+      ${spreadCard(model.spreadHitRate, now)}
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <span class="label" style="display:block;margin-bottom:0.9rem">Event effects</span>
+      ${fitsCard(model.eventFits, now)}
+    </div>`;
+}
+
+function render(health, version, snap, model) {
   const now = Date.now();
   const stale = now - health.lastIngestAt > 10 * 60 * 1000;
   const allGaps = health.gaps || [];
@@ -87,22 +187,18 @@ function render(health, version, snap) {
     <h2 class="section-heading">Stored history</h2>
     <div class="card">
       <div class="grid grid-3">
-        ${health.rows
-    ? `${stat('Raw ticks', formatCompact(health.rows.raw))}
-        ${stat('Hourly bars', formatCompact(health.rows.barsHourly), '', `oldest ${esc(formatLocalTime(health.oldestBar.hourly))}`)}
-        ${stat('Five-minute bars', formatCompact(health.rows.barsFiveMin), '', `oldest ${esc(formatLocalTime(health.oldestBar.fiveMin))}`)}`
-    : `${stat('Raw ticks', 'not counted')}
-        ${stat('Hourly bars', 'not counted', '', `oldest ${esc(formatLocalTime(health.oldestBar.hourly))}`)}
-        ${stat('Five-minute bars', 'not counted', '', `oldest ${esc(formatLocalTime(health.oldestBar.fiveMin))}`)}`}
+        ${stat('Raw ticks', health.rows ? formatCompact(health.rows.raw) : 'not counted yet')}
+        ${stat('Hourly bars', health.rows ? formatCompact(health.rows.barsHourly) : 'not counted yet', '', `oldest ${esc(formatLocalTime(health.oldestBar.hourly))}`)}
+        ${stat('Five-minute bars', health.rows ? formatCompact(health.rows.barsFiveMin) : 'not counted yet', '', `oldest ${esc(formatLocalTime(health.oldestBar.fiveMin))}`)}
       </div>
-      ${health.rows ? '' : `<p style="margin:0.9rem 0 0"><button class="btn btn-sm" id="count-rows-btn" type="button">Count stored rows</button></p>
-      <p class="dimmer" style="font-size:0.75rem;margin:0.4rem 0 0">
-        Counting is a deliberate click, not part of loading this page. The counts are
-        <span class="mono">COUNT(*)</span> scans and D1 bills every row scanned, so running them on
-        each visit spent the free plan's whole daily row-read budget in about ten page views – which
-        took every stored-data endpoint down until midnight UTC. The oldest-bar times above are
-        index seeks and are always live.
-      </p>`}
+      <p class="dimmer" style="font-size:0.75rem;margin:0.6rem 0 0">
+        ${health.rows
+    ? `Counted <span data-age="${health.rows.countedAt}">${esc(formatAge(health.rows.countedAt, now))}</span> by the worker's daily job.`
+    : 'The worker counts these once a day; no count has been taken since this build was deployed.'}
+        Counts are <span class="mono">COUNT(*)</span> scans, so they are taken once a day and stored
+        rather than run on every visit. Five-minute bars cover every product and are kept for 14
+        days; hourly bars are kept indefinitely. The oldest-bar times are always live.
+      </p>
       <p class="dim" style="font-size:0.82rem;margin:1rem 0 0">
         A range can only be charted or predicted as far back as the bars behind it reach. There are
         ${esc(formatDuration(now - health.oldestBar.hourly))} of hourly bars, so asking for six
@@ -112,6 +208,9 @@ function render(health, version, snap) {
         <span class="mono">INSUFFICIENT_HISTORY</span> rather than extrapolating.
       </p>
     </div>
+
+    <h2 class="section-heading">Model check</h2>
+    ${modelSection(model, now)}
 
     <h2 class="section-heading">Live market state</h2>
     <div class="card">
@@ -134,49 +233,20 @@ function render(health, version, snap) {
 }
 
 Promise.all([
-  // Plain /health, no ?rows=1 - see api/health.js. The row counts are COUNT(*) scans billed per row
-  // scanned, so even this page loads without them and asks only when the button below is clicked.
   callWorker('/health'),
   callWorker('/version').catch(() => null),
   loadSnapshot().catch(() => null),
-]).then(([healthRes, versionRes, snap]) => {
+  callWorker('/model').catch(() => null),
+]).then(([healthRes, versionRes, snap, modelRes]) => {
   if (healthRes.status !== 200) {
     renderErrorState(body, classifyFailure(null, healthRes.body) || 'unknown', { what: 'Worker health' });
     return;
   }
   const version = versionRes && versionRes.status === 200 ? versionRes.body : null;
-  paint(healthRes.body, version, snap);
+  const model = modelRes && modelRes.status === 200 ? modelRes.body : null;
+  render(healthRes.body, version, snap, model);
+  // Every relative time above carries data-age, so the shared ticker keeps it live (CLAUDE.md rule 12).
+  startAgeTicker(body);
 }).catch(() => {
   renderErrorState(body, 'unreachable');
 });
-
-/** Renders, then re-wires the count button – render() replaces the whole subtree, so the listener
- * has to be reattached after every paint rather than bound once at startup. */
-let stopAgeTicker = null;
-
-function paint(health, version, snap) {
-  render(health, version, snap);
-  // startAgeTicker returns its own stopper; a second paint would otherwise leave the first
-  // interval running against detached nodes.
-  if (stopAgeTicker) stopAgeTicker();
-  stopAgeTicker = startAgeTicker(body);
-
-  const btn = document.getElementById('count-rows-btn');
-  if (!btn) return; // already counted this visit
-  btn.addEventListener('click', async () => {
-    btn.disabled = true;
-    btn.textContent = 'Counting…';
-    try {
-      const { status, body: counted } = await callWorker('/health?rows=1');
-      // A failure here is usually the row-read budget rather than a bug, and the count is the one
-      // thing that can exhaust it - so report it in place and leave the rest of the page standing.
-      if (status !== 200 || !counted.rows) {
-        btn.textContent = 'Counting failed – the row-read budget is likely spent';
-        return;
-      }
-      paint(counted, version, snap);
-    } catch {
-      btn.textContent = 'Counting failed – the worker did not respond';
-    }
-  });
-}

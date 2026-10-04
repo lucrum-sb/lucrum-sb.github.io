@@ -48,7 +48,9 @@
           <p class="sub">
             Ingest health straight from <code>GET /health</code> and <code>GET /version</code>.
             A gap here means history has a hole in it, which quietly degrades every prediction
-            that spans it – so it is shown rather than smoothed over.
+            that spans it – so it is shown rather than smoothed over. The model check below, from
+            <code>GET /model</code>, is held to the same standard: a forecast that loses to a flat
+            price says so.
           </p>
         </div>
       </div>

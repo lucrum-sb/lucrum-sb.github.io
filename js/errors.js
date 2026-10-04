@@ -10,11 +10,11 @@ const COPY = {
     `${what || 'This data'} is not available yet. The worker has no completed pass to serve – it is computed on a schedule, not on request, so this resolves on its own within a few minutes.`
   ),
   // "Try a shorter range" was wrong advice: /history now returns whatever part of a window it has,
-  // so this code means there is genuinely no bar at that range's resolution. For 1d that is a
-  // storage decision rather than a young item – bars_5m is written only for the busiest products –
-  // and pointing at a shorter range would send the reader to 1h, which is thinner still.
+  // so this code means there is genuinely no bar at that range's resolution. Five-minute bars cover
+  // every product since the move to Workers Paid, but only from that point on – an item outside the
+  // old top-100 watchlist has no 1d history before then, while the hourly tier goes back further.
   insufficient_history: ({ item, range }) => (range === '1d'
-    ? `No five-minute bars are stored for ${item || 'this item'}. That tier is kept only for the 100 highest-volume products; the other ranges read the hourly tier, which covers everything.`
+    ? `No five-minute bars are stored for ${item || 'this item'} yet. They are recorded for every product now, and the other ranges read the hourly tier, which goes back further.`
     : `No stored history for ${item || 'this item'} at this range's resolution yet.`),
   no_realised_data: ({ item }) => (
     `Nothing was recorded for ${item || 'this item'} over the scored window, so there is nothing to compare the model against.`
