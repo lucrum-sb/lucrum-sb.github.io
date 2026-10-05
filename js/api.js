@@ -32,6 +32,11 @@ function storedToken() {
   try { return localStorage.getItem(TOKEN_KEY); } catch (err) { return null; }
 }
 
+/** Forgets the stored session token on this device. */
+export function clearToken() {
+  try { localStorage.removeItem(TOKEN_KEY); } catch (err) { /* nothing stored */ }
+}
+
 /** Calls a worker endpoint and returns the parsed JSON body, whatever the status code – the
  * caller branches on `body.code` per docs/CONTRACTS.md, never on the HTTP status alone. Throws
  * WorkerUnreachableError only when the request never got a response at all. */

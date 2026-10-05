@@ -8,7 +8,7 @@
 // signed-in player's `uuid` (and `ign`) as query params on that redirect – this is the only way a
 // static page can learn its own account's uuid without a dedicated "whoami" endpoint, which isn't
 // in the contract. If the worker's actual redirect shape differs, only this file needs updating.
-import { WORKER_ORIGIN, callWorker, WorkerUnreachableError } from './api.js';
+import { WORKER_ORIGIN, callWorker, clearToken, WorkerUnreachableError } from './api.js';
 import { renderErrorState, classifyFailure, failureText } from './errors.js';
 import { renderProfile } from './portfolio-render.js';
 import { esc, itemLabel, formatCoins, formatInt } from './format.js';
@@ -17,6 +17,7 @@ import './shell.js';
 const STORAGE_KEY = 'lucrum-account-uuid';
 
 const signinSlot = document.getElementById('signin-slot');
+const signoutSlot = document.getElementById('signout-slot');
 const signinBtn = document.getElementById('signin-btn');
 const signinError = document.getElementById('signin-error');
 const privacySlot = document.getElementById('privacy-slot');
@@ -224,6 +225,7 @@ async function loadProfile(uuid) {
     return;
   }
   signinSlot.hidden = true;
+  signoutSlot.hidden = false;
   renderPrivacyToggle(body.public, uuid);
   if (!tradeSlot.innerHTML) renderTradeForm(uuid);
   renderProfile(profileSlot, body, { owner: true, onClose: (id, actual) => closePosition(uuid, id, actual) });
@@ -251,6 +253,13 @@ signinBtn.addEventListener('click', async () => {
   } catch (err) {
     window.location.href = url;
   }
+});
+
+document.getElementById('signout-btn').addEventListener('click', async () => {
+  clearToken();
+  try { localStorage.removeItem(STORAGE_KEY); } catch (err) { /* nothing stored */ }
+  try { await callWorker('/auth/logout', { method: 'POST' }); } catch (err) { /* cookie clears on expiry */ }
+  window.location.reload();
 });
 
 const uuid = storedUuid();
