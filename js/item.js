@@ -244,6 +244,10 @@ function buildChart({ history, predict }) {
   const buildTime = Date.now();
   const nowRef = { value: now };
 
+  // Where the pointer is, so the tooltip can tell the past from the future. Index-mode picks the
+  // nearest point on every line, so without this a past date also listed the first forecast point.
+  let hoverX = null;
+
   if (chart) chart.destroy();
   if (nowTicker) { clearInterval(nowTicker); nowTicker = null; }
   const canvas = document.getElementById('chart');
@@ -259,6 +263,7 @@ function buildChart({ history, predict }) {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false, axis: 'x' },
+      onHover: (event) => { hoverX = event.x; },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -274,7 +279,13 @@ function buildChart({ history, predict }) {
             title: (items) => (items[0] ? formatLocalTime(items[0].parsed.x) : ''),
             label: (item) => `${item.dataset.label}: ${formatCoins(item.parsed.y)}`,
           },
-          filter: (item) => !item.dataset.label.includes('band'),
+          // History lines only up to "now", forecast lines only after it, and never the band edges.
+          filter: (item) => {
+            if (item.dataset.label.includes('band')) return false;
+            const at = hoverX === null ? null : item.chart.scales.x.getValueForPixel(hoverX);
+            if (at === null || at === undefined) return true;
+            return item.dataset.label.includes('forecast') ? at >= nowRef.value : at <= nowRef.value;
+          },
         },
       },
       scales: {
@@ -357,10 +368,9 @@ function renderModel(predict, historyMeta) {
       item's own history – most bazaar prices are sticky enough that "it stays here" is the honest
       forecast. The shaded band is the middle half of what has followed this item's own past
       forecasts: about half of prices should land inside it, a quarter above and a quarter below.
-      A calendar event stretches the band on the side it is expected to push, without moving the
-      line: measured event effects have not yet beaten noise. Confidence falls when history is thin
-      relative to the horizon, when the price jumps a lot, or when an unfitted event effect is
-      large.
+      Calendar events are marked but do not move the line or the band: their measured effects have
+      not yet beaten noise. Confidence falls when history is thin relative to the horizon or when
+      the price jumps a lot.
     </p>`;
 }
 
