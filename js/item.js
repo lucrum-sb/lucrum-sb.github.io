@@ -332,7 +332,7 @@ function renderModel(predict, historyMeta) {
   const basisText = (b) => {
     if (!b) return '–';
     if (b.shape === 'flat') return 'flat – nothing beat a flat line on this item\'s past';
-    const what = b.shape === 'reversion' ? 'reversion to the 72h median' : 'fitted cycles and drift';
+    const what = b.shape === 'reversion' ? 'reversion to the recent median' : 'fitted cycles and drift';
     return `${what} at ${formatPct(b.weight, 0)} – ${formatPct(b.improvement, 0)} less error than flat over ${b.origins} past windows`;
   };
   const rows = [
