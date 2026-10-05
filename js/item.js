@@ -69,6 +69,7 @@ let range = '1w';
 // and a longer forecast is a different, separately validated model, not the same line stretched.
 // Longer than 4 weeks is not offered: stored history is too short to validate it.
 let fc = '1w';
+let showPaths = true; // faint example paths around the forecast; illustrative only
 let view = null; // { min, max } – the visible time window once the reader has zoomed or panned
 let backtestAt = null; // { from, body } – a replay drawn on the chart
 let interactAbort = null; // removes the previous chart's pointer handlers on a rebuild
@@ -213,6 +214,17 @@ function tickFormat(ts, spanMs) {
   return d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
 }
 
+/** Example paths as faint thin lines, one pair (buy, sell) per path; see quant/predict.js examplePaths(). */
+function pathSets(paths, buyCurve, sellCurve, at, buy, sell) {
+  const out = [];
+  (paths || []).forEach((p, n) => {
+    out.push({ label: `Example buy path ${n + 1}`, data: p.buy.map((y, i) => ({ x: at(buyCurve[i]), y })), borderColor: withAlpha(buy, 0.35), borderWidth: 1, pointRadius: 0, tension: 0 });
+    out.push({ label: `Example sell path ${n + 1}`, data: p.sell.map((y, i) => ({ x: at(sellCurve[i]), y })), borderColor: withAlpha(sell, 0.35), borderWidth: 1, pointRadius: 0, tension: 0 });
+  });
+  return out;
+}
+function pushPaths(datasets, ...args) { datasets.push(...pathSets(...args)); }
+
 // One tooltip row per line, each taken at the point nearest the pointer on that line's own time
 // axis. The built-in 'index' mode pairs points by array position, which is wrong the moment lines
 // (history, forecast, a replay) do not share their time points.
@@ -242,7 +254,7 @@ function fitY() {
   let lo = Infinity;
   let hi = -Infinity;
   for (const ds of chart.data.datasets) {
-    if (ds.label.includes('range band')) continue;
+    if (ds.label.includes('range band') || ds.label.startsWith('Example')) continue;
     for (const p of ds.data) {
       if (p.x < sx.min || p.x > sx.max || !Number.isFinite(p.y)) continue;
       if (p.y < lo) lo = p.y;
@@ -400,6 +412,7 @@ function buildChart({ history, predict }) {
         borderColor: sell, borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, tension: 0.15, glow: 12,
       },
     );
+    if (showPaths) pushPaths(datasets, predict.paths, predict.buy, predict.sell, at, buy, sell);
   }
 
   const bt = backtestAt;
@@ -417,6 +430,7 @@ function buildChart({ history, predict }) {
       { label: 'Backtest sell band lo', data: b.predicted.sell.map((p) => ({ x: atb(p), y: p.lo })), ...hl, fill: '-1', backgroundColor: withAlpha(sell, 0.07) },
       { label: 'Backtest buy forecast', data: b.predicted.buy.map((p) => ({ x: atb(p), y: p.p })), borderColor: buy, ...dot },
       { label: 'Backtest sell forecast', data: b.predicted.sell.map((p) => ({ x: atb(p), y: p.p })), borderColor: sell, ...dot },
+      ...(showPaths ? pathSets(b.paths, b.predicted.buy, b.predicted.sell, atb, buy, sell) : []),
       { label: 'Flat baseline buy', data: flat(b.naive.buy), borderColor: textDim, pointRadius: 0, borderWidth: 1, borderDash: [1, 3] },
       { label: 'Flat baseline sell', data: flat(b.naive.sell), borderColor: textDim, pointRadius: 0, borderWidth: 1, borderDash: [1, 3] },
     );
@@ -470,7 +484,7 @@ function buildChart({ history, predict }) {
           // moment it started from, and never the band edges.
           filter: (item) => {
             const label = item.dataset.label;
-            if (label.includes('band')) return false;
+            if (label.includes('band') || label.startsWith('Example')) return false;
             const at = hoverX === null ? null : item.chart.scales.x.getValueForPixel(hoverX);
             if (at === null || at === undefined) return true;
             if (label.startsWith('Backtest') || label.startsWith('Flat baseline')) return btRef.from !== null && at >= btRef.from;
@@ -769,6 +783,7 @@ function chartShell() {
       <span><span class="swatch dashed"></span>Forecast</span>
       <span><span class="swatch" style="background:var(--line-strong)"></span>Middle half of outcomes</span>
       <span><span class="swatch" style="background:var(--line)"></span>High–low range of each bar</span>
+      <label class="filter-check"><input type="checkbox" id="paths-toggle" ${showPaths ? 'checked' : ''}><span>Example paths (one way it could go – not a prediction)</span></label>
     </div>
     <p class="chart-hint">Scroll or pinch to zoom, drag to pan, double-click to reset. Click any point in the past to replay the forecast from there.</p>
     <p class="bt-note" id="bt-note"></p>`;
@@ -830,6 +845,10 @@ async function loadChart() {
   }
   lastPayload = { history: history || { bars: [] }, predict };
   buildChart(lastPayload);
+  document.getElementById('paths-toggle').addEventListener('change', (e) => {
+    showPaths = e.target.checked;
+    if (lastPayload) buildChart(lastPayload);
+  });
 
   if (predict) {
     renderModel(predict, history);
