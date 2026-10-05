@@ -553,6 +553,7 @@ function renderModel(predict, historyMeta) {
   const basisText = (b) => {
     if (!b) return '–';
     if (b.shape === 'flat') return 'flat – nothing beat a flat line on this item\'s past';
+    if (b.shape === 'learned') return `learned from every item's history – ${formatPct(b.improvement, 1)} less error than a flat line on a month it never saw`;
     const what = b.shape === 'reversion' ? 'reversion to the recent median' : 'fitted cycles and drift';
     return `${what} at ${formatPct(b.weight, 0)} – ${formatPct(b.improvement, 0)} less error than flat over ${b.origins} past windows`;
   };
@@ -576,10 +577,13 @@ function renderModel(predict, historyMeta) {
     <p class="dim" style="font-size:0.8rem;margin:0.9rem 0 0">
       The drawn line is one way the price could go: a smooth average plus this item's own kind of
       jumps, replayed from its recent history. The jumps show how rough the price is; their timing is
-      not a prediction. The average under them (toggle it on the chart) starts at the last price and
-      bends only where that beat a flat line on this item's own history, and it is what the
-      backtest scores. The shaded band is the middle half of what has followed this item's own past
-      forecasts: about half of prices should land inside it, a quarter above and a quarter below.
+      not a prediction. The average under them (toggle it on the chart) is what the backtest scores.
+      It comes from a model trained on the history of hundreds of items at once: it weighs where the
+      price sits against its levels over the last 12 hours to 30 days, recent momentum and
+      volatility, the spread, the order book and weekly volume, the other side's price and the time
+      of day, and learns how those combinations moved prices afterwards. The shaded band is the
+      middle half of what followed similar moments: about half of prices should land inside it.
+      Items with under about four days of history fall back to their own-history model.
       Calendar events are marked but do not move the line or the band: their measured effects have
       not yet beaten noise. Confidence falls when history is thin relative to the horizon or when
       the price jumps a lot.
