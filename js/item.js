@@ -69,7 +69,7 @@ let range = '1w';
 // and a longer forecast is a different, separately validated model, not the same line stretched.
 // Longer than 4 weeks is not offered: stored history is too short to validate it.
 let fc = '1w';
-let showPaths = true; // faint example paths around the forecast; illustrative only
+let showAverage = false; // the smooth average line (what is scored); the drawn forecast is one erratic path
 let view = null; // { min, max } – the visible time window once the reader has zoomed or panned
 let backtestAt = null; // { from, body } – a replay drawn on the chart
 let interactAbort = null; // removes the previous chart's pointer handlers on a rebuild
@@ -214,14 +214,16 @@ function tickFormat(ts, spanMs) {
   return d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
 }
 
-/** Example paths as faint thin lines, one pair (buy, sell) per path; see quant/predict.js examplePaths(). */
-function pathSets(paths, buyCurve, sellCurve, at, buy, sell) {
-  const out = [];
-  (paths || []).forEach((p, n) => {
-    out.push({ label: `Example buy path ${n + 1}`, data: p.buy.map((y, i) => ({ x: at(buyCurve[i]), y })), borderColor: withAlpha(buy, 0.35), borderWidth: 1, pointRadius: 0, tension: 0 });
-    out.push({ label: `Example sell path ${n + 1}`, data: p.sell.map((y, i) => ({ x: at(sellCurve[i]), y })), borderColor: withAlpha(sell, 0.35), borderWidth: 1, pointRadius: 0, tension: 0 });
-  });
-  return out;
+/** The forecast as drawn: one erratic path per side (quant/predict.js examplePaths()) – the smooth
+ * average plus this item's own kind of moves, so it looks like a real price would. */
+function pathSets(paths, buyCurve, sellCurve, at, buy, sell, prefix) {
+  const p = (paths || [])[0];
+  if (!p) return [];
+  const style = { borderWidth: 1.5, pointRadius: 0, tension: 0, borderDash: prefix ? [2, 3] : [5, 4], glow: prefix ? 0 : 10 };
+  return [
+    { label: `${prefix}${prefix ? 'buy' : 'Buy'} forecast`, data: p.buy.map((y, i) => ({ x: at(buyCurve[i]), y })), borderColor: buy, ...style },
+    { label: `${prefix}${prefix ? 'sell' : 'Sell'} forecast`, data: p.sell.map((y, i) => ({ x: at(sellCurve[i]), y })), borderColor: sell, ...style },
+  ];
 }
 function pushPaths(datasets, ...args) { datasets.push(...pathSets(...args)); }
 
@@ -254,7 +256,7 @@ function fitY() {
   let lo = Infinity;
   let hi = -Infinity;
   for (const ds of chart.data.datasets) {
-    if (ds.label.includes('range band') || ds.label.startsWith('Example')) continue;
+    if (ds.label.includes('range band')) continue;
     for (const p of ds.data) {
       if (p.x < sx.min || p.x > sx.max || !Number.isFinite(p.y)) continue;
       if (p.y < lo) lo = p.y;
@@ -403,16 +405,14 @@ function buildChart({ history, predict }) {
       { label: 'Buy band lo', data: predict.buy.map((p) => ({ x: at(p), y: p.lo })), ...band, fill: '-1', backgroundColor: withAlpha(buy, 0.1) },
       { label: 'Sell band hi', data: predict.sell.map((p) => ({ x: at(p), y: p.hi })), ...band },
       { label: 'Sell band lo', data: predict.sell.map((p) => ({ x: at(p), y: p.lo })), ...band, fill: '-1', backgroundColor: withAlpha(sell, 0.1) },
-      {
-        label: 'Buy forecast', data: predict.buy.map((p) => ({ x: at(p), y: p.p })),
-        borderColor: buy, borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, tension: 0.15, glow: 12,
-      },
-      {
-        label: 'Sell forecast', data: predict.sell.map((p) => ({ x: at(p), y: p.p })),
-        borderColor: sell, borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, tension: 0.15, glow: 12,
-      },
     );
-    if (showPaths) pushPaths(datasets, predict.paths, predict.buy, predict.sell, at, buy, sell);
+    pushPaths(datasets, predict.paths, predict.buy, predict.sell, at, buy, sell, '');
+    if (showAverage || !(predict.paths || []).length) {
+      datasets.push(
+        { label: 'Buy average', data: predict.buy.map((p) => ({ x: at(p), y: p.p })), borderColor: withAlpha(buy, 0.6), borderDash: [5, 4], borderWidth: 1, pointRadius: 0, tension: 0.15 },
+        { label: 'Sell average', data: predict.sell.map((p) => ({ x: at(p), y: p.p })), borderColor: withAlpha(sell, 0.6), borderDash: [5, 4], borderWidth: 1, pointRadius: 0, tension: 0.15 },
+      );
+    }
   }
 
   const bt = backtestAt;
@@ -428,9 +428,11 @@ function buildChart({ history, predict }) {
       { label: 'Backtest buy band lo', data: b.predicted.buy.map((p) => ({ x: atb(p), y: p.lo })), ...hl, fill: '-1', backgroundColor: withAlpha(buy, 0.07) },
       { label: 'Backtest sell band hi', data: b.predicted.sell.map((p) => ({ x: atb(p), y: p.hi })), ...hl },
       { label: 'Backtest sell band lo', data: b.predicted.sell.map((p) => ({ x: atb(p), y: p.lo })), ...hl, fill: '-1', backgroundColor: withAlpha(sell, 0.07) },
-      { label: 'Backtest buy forecast', data: b.predicted.buy.map((p) => ({ x: atb(p), y: p.p })), borderColor: buy, ...dot },
-      { label: 'Backtest sell forecast', data: b.predicted.sell.map((p) => ({ x: atb(p), y: p.p })), borderColor: sell, ...dot },
-      ...(showPaths ? pathSets(b.paths, b.predicted.buy, b.predicted.sell, atb, buy, sell) : []),
+      ...(showAverage || !(b.paths || []).length ? [
+        { label: 'Backtest buy average', data: b.predicted.buy.map((p) => ({ x: atb(p), y: p.p })), borderColor: withAlpha(buy, 0.6), ...dot, borderWidth: 1 },
+        { label: 'Backtest sell average', data: b.predicted.sell.map((p) => ({ x: atb(p), y: p.p })), borderColor: withAlpha(sell, 0.6), ...dot, borderWidth: 1 },
+      ] : []),
+      ...pathSets(b.paths, b.predicted.buy, b.predicted.sell, atb, buy, sell, 'Backtest '),
       { label: 'Flat baseline buy', data: flat(b.naive.buy), borderColor: textDim, pointRadius: 0, borderWidth: 1, borderDash: [1, 3] },
       { label: 'Flat baseline sell', data: flat(b.naive.sell), borderColor: textDim, pointRadius: 0, borderWidth: 1, borderDash: [1, 3] },
     );
@@ -484,11 +486,11 @@ function buildChart({ history, predict }) {
           // moment it started from, and never the band edges.
           filter: (item) => {
             const label = item.dataset.label;
-            if (label.includes('band') || label.startsWith('Example')) return false;
+            if (label.includes('band')) return false;
             const at = hoverX === null ? null : item.chart.scales.x.getValueForPixel(hoverX);
             if (at === null || at === undefined) return true;
             if (label.startsWith('Backtest') || label.startsWith('Flat baseline')) return btRef.from !== null && at >= btRef.from;
-            return label.includes('forecast') ? at >= nowRef.value : at <= nowRef.value;
+            return label.includes('forecast') || label.includes('average') ? at >= nowRef.value : at <= nowRef.value;
           },
         },
       },
@@ -571,9 +573,11 @@ function renderModel(predict, historyMeta) {
       ${rows.map(([l, v]) => `<div><span class="label">${l}</span><span class="value">${v}</span></div>`).join('')}
     </div>
     <p class="dim" style="font-size:0.8rem;margin:0.9rem 0 0">
-      Every curve starts at the last price. It bends only where a shape beat a flat line on this
-      item's own history – most bazaar prices are sticky enough that "it stays here" is the honest
-      forecast. The shaded band is the middle half of what has followed this item's own past
+      The drawn line is one way the price could go: a smooth average plus this item's own kind of
+      jumps, replayed from its recent history. The jumps show how rough the price is; their timing is
+      not a prediction. The average under them (toggle it on the chart) starts at the last price and
+      bends only where that beat a flat line on this item's own history, and it is what the
+      backtest scores. The shaded band is the middle half of what has followed this item's own past
       forecasts: about half of prices should land inside it, a quarter above and a quarter below.
       Calendar events are marked but do not move the line or the band: their measured effects have
       not yet beaten noise. Confidence falls when history is thin relative to the horizon or when
@@ -736,7 +740,7 @@ async function runBacktestAt(t) {
     const m = body.metrics || {};
     if (note) {
       note.innerHTML = `Replay from <strong>${esc(formatLocalTime(body.from))}</strong> over ${esc(formatDuration(body.futureMs))}: ${
-        m.skill === null || m.skill === undefined ? 'skill undefined' : `skill <span class="${signClass(m.skill)}">${esc(formatPctSigned(m.skill))}</span> vs staying flat`
+        m.skill === null || m.skill === undefined ? 'skill undefined' : `the average line scored <span class="${signClass(m.skill)}">${esc(formatPctSigned(m.skill))}</span> vs staying flat`
       }. <button class="btn btn-sm" id="bt-clear" type="button">Clear</button>`;
       document.getElementById('bt-clear').addEventListener('click', clearBacktest);
     }
@@ -783,7 +787,7 @@ function chartShell() {
       <span><span class="swatch dashed"></span>Forecast</span>
       <span><span class="swatch" style="background:var(--line-strong)"></span>Middle half of outcomes</span>
       <span><span class="swatch" style="background:var(--line)"></span>High–low range of each bar</span>
-      <label class="filter-check"><input type="checkbox" id="paths-toggle" ${showPaths ? 'checked' : ''}><span>Example paths (one way it could go – not a prediction)</span></label>
+      <label class="filter-check"><input type="checkbox" id="average-toggle" ${showAverage ? 'checked' : ''}><span>Show the smooth average (what the backtest scores)</span></label>
     </div>
     <p class="chart-hint">Scroll or pinch to zoom, drag to pan, double-click to reset. Click any point in the past to replay the forecast from there.</p>
     <p class="bt-note" id="bt-note"></p>`;
@@ -845,8 +849,8 @@ async function loadChart() {
   }
   lastPayload = { history: history || { bars: [] }, predict };
   buildChart(lastPayload);
-  document.getElementById('paths-toggle').addEventListener('change', (e) => {
-    showPaths = e.target.checked;
+  document.getElementById('average-toggle').addEventListener('change', (e) => {
+    showAverage = e.target.checked;
     if (lastPayload) buildChart(lastPayload);
   });
 
