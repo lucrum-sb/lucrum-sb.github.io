@@ -206,7 +206,13 @@ function buildChart({ history, predict }) {
   const textDim = cssVar('--text-3');
   const surface = cssVar('--surface');
 
+  // Each bar's high-low range, faint behind the lines: a resting order fills only if the range reached it.
+  const hl = { pointRadius: 0, borderWidth: 0, borderColor: 'transparent', tension: 0.1, spanGaps: true };
   const datasets = [
+    { label: 'Buy range band hi', data: bars.map((b) => ({ x: b.t, y: b.bh })), ...hl },
+    { label: 'Buy range band lo', data: bars.map((b) => ({ x: b.t, y: b.bl })), ...hl, fill: '-1', backgroundColor: withAlpha(buy, 0.07) },
+    { label: 'Sell range band hi', data: bars.map((b) => ({ x: b.t, y: b.sh })), ...hl },
+    { label: 'Sell range band lo', data: bars.map((b) => ({ x: b.t, y: b.sl })), ...hl, fill: '-1', backgroundColor: withAlpha(sell, 0.07) },
     {
       label: 'Buy', data: bars.map((b) => ({ x: b.t, y: b.bc })),
       borderColor: buy, borderWidth: 1.5, pointRadius: 0, tension: 0.1, glow: 10,
@@ -543,6 +549,7 @@ function chartShell() {
       <span class="sell-c"><span class="swatch" style="background:var(--sell)"></span>Sell side</span>
       <span><span class="swatch dashed"></span>Forecast</span>
       <span><span class="swatch" style="background:var(--line-strong)"></span>Middle half of outcomes</span>
+      <span><span class="swatch" style="background:var(--line)"></span>High–low range of each bar</span>
     </div>`;
 }
 
