@@ -691,10 +691,8 @@ function wireBacktest() {
   const btn = document.getElementById('backtest-btn');
   if (!btn) return;
   btn.addEventListener('click', () => {
-    // Anchored to the horizon, and deliberately as recent as the data allows. The worker replays
-    // forward from `from` by futureMs and can only score that against bars that exist, so `from`
-    // sits at least a horizon in the past; two closed bars of margin make the last scored bar real.
-    runBacktestAt(Date.now() - backtestHorizonMs(fc) - 2 * RANGE_BAR_MS[fc]);
+    // One forecast length back from now; the replay always runs to the present.
+    runBacktestAt(Date.now() - backtestHorizonMs(fc));
   });
 }
 
@@ -703,11 +701,17 @@ function wireBacktest() {
 async function runBacktestAt(t) {
   const note = document.getElementById('bt-note');
   const btn = document.getElementById('backtest-btn');
-  const from = Math.floor(t / RANGE_BAR_MS[fc]) * RANGE_BAR_MS[fc]; // bar-aligned, so nearby clicks share a cached run
+  const step = RANGE_BAR_MS[fc];
+  const from = Math.floor(t / step) * step; // bar-aligned, so nearby clicks share a cached run
+  const to = Math.floor(Date.now() / step) * step; // always replayed up to the present
+  if (to - from < 3 * step) {
+    if (note) note.textContent = 'That is too close to now to replay – click further back.';
+    return;
+  }
   if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
   if (note) note.textContent = `Replaying the forecast from ${formatLocalTime(from)}…`;
   try {
-    const { status, body } = await callWorker(`/backtest?item=${encodeURIComponent(itemId)}&from=${from}&range=${fc}`);
+    const { status, body } = await callWorker(`/backtest?item=${encodeURIComponent(itemId)}&from=${from}&to=${to}&range=${fc}`);
     if (status !== 200) {
       const kind = classifyFailure(null, body) || 'unknown';
       if (note) note.textContent = failureText(kind, { item: itemId, range: fc });
