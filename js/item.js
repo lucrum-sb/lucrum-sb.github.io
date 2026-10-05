@@ -355,9 +355,11 @@ function renderModel(predict, historyMeta) {
     <p class="dim" style="font-size:0.8rem;margin:0.9rem 0 0">
       Every curve starts at the last price. It bends only where a shape beat a flat line on this
       item's own history – most bazaar prices are sticky enough that "it stays here" is the honest
-      forecast. A calendar event widens the band on the side it is expected to push, without moving
-      the line: measured event effects have not yet beaten noise. Confidence falls when history is
-      thin relative to the horizon, when the price jumps a lot, or when an unfitted event effect is
+      forecast. The shaded band is the middle half of what has followed this item's own past
+      forecasts: about half of prices should land inside it, a quarter above and a quarter below.
+      A calendar event stretches the band on the side it is expected to push, without moving the
+      line: measured event effects have not yet beaten noise. Confidence falls when history is thin
+      relative to the horizon, when the price jumps a lot, or when an unfitted event effect is
       large.
     </p>`;
 }
@@ -530,7 +532,7 @@ function chartShell() {
       <span class="buy-c"><span class="swatch" style="background:var(--buy)"></span>Buy side</span>
       <span class="sell-c"><span class="swatch" style="background:var(--sell)"></span>Sell side</span>
       <span><span class="swatch dashed"></span>Forecast</span>
-      <span><span class="swatch" style="background:var(--line-strong)"></span>Uncertainty band</span>
+      <span><span class="swatch" style="background:var(--line-strong)"></span>Middle half of outcomes</span>
     </div>`;
 }
 
