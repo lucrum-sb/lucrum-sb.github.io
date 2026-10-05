@@ -15,6 +15,7 @@ const BINDING_TEXT = {
   slots: 'Every order slot is in use – a higher Bazaar Flipper level would add 7 more.',
   capital: 'Your capital is fully deployed.',
   time: 'Your hands-on budget is used up – allow more minutes an hour to fit more NPC and craft trades.',
+  'daily-cap': 'The plan is paced to the bazaar\'s ~15B daily order cap over 8 hours of trading – every order you place, and every relist, counts toward it even if it never fills.',
   opportunities: 'Nothing else currently clears the worker\'s scoring with what you have left.',
 };
 
@@ -34,6 +35,7 @@ function render(plan) {
         <div class="stat"><span class="label">Planned net / hour</span><span class="value lg accent">${formatCompact(plan.netPerHour)}</span><p class="note">if every order fills as estimated</p></div>
         <div class="stat"><span class="label">Order slots</span><span class="value lg">${formatInt(plan.used.slots)} / ${formatInt(plan.slots)}</span></div>
         <div class="stat"><span class="label">Capital used</span><span class="value lg">${formatCompact(plan.used.capital)}</span><p class="note">of ${formatCompact(plan.capitalCoins)}</p></div>
+        <div class="stat"><span class="label">Daily order cap</span><span class="value lg">${plan.dailyCapHours === null || plan.dailyCapHours === undefined ? '–' : `${plan.dailyCapHours}h`}</span><p class="note">how long ~15B of orders lasts at this pace</p></div>
         <div class="stat"><span class="label">Hands-on</span><span class="value lg">${plan.activeMinutesPerHour} min</span><p class="note">per hour, of ${plan.maxActiveMinutesPerHour} min allowed</p></div>
       </div>
       <p class="dim" style="margin:0.8rem 0 0;font-size:0.82rem">${esc(BINDING_TEXT[plan.binding] || '')}</p>
