@@ -553,7 +553,7 @@ function renderModel(predict, historyMeta) {
   const basisText = (b) => {
     if (!b) return '–';
     if (b.shape === 'flat') return 'flat – nothing beat a flat line on this item\'s past';
-    if (b.shape === 'learned') return `learned from every item's history – ${formatPct(b.improvement, 1)} less error than a flat line on a month it never saw`;
+    if (b.shape === 'learned') return `learned from every item's history, blended with this item's own – ${formatPct(b.improvement, 1)} less error than a flat line over 5 days on a month it never saw`;
     const what = b.shape === 'reversion' ? 'reversion to the recent median' : 'fitted cycles and drift';
     return `${what} at ${formatPct(b.weight, 0)} – ${formatPct(b.improvement, 0)} less error than flat over ${b.origins} past windows`;
   };
@@ -581,8 +581,10 @@ function renderModel(predict, historyMeta) {
       It comes from a model trained on the history of hundreds of items at once: it weighs where the
       price sits against its levels over the last 12 hours to 30 days, recent momentum and
       volatility, the spread, the order book and weekly volume, the other side's price and the time
-      of day, and learns how those combinations moved prices afterwards. The shaded band is the
-      middle half of what followed similar moments: about half of prices should land inside it.
+      of day, and learns how those combinations moved prices afterwards. That is averaged with this
+      item's own-history model and pulled toward the last price over the next few hours, where
+      neither model beats "it stays here". The shaded band is the middle half of what followed
+      similar moments: about half of prices should land inside it.
       Items with under about four days of history fall back to their own-history model.
       Calendar events are marked but do not move the line or the band: their measured effects have
       not yet beaten noise. Confidence falls when history is thin relative to the horizon or when
