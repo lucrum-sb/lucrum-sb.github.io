@@ -513,7 +513,8 @@ function buildChart({ history, predict }) {
           ticks: {
             color: textDim,
             font: { family: '"JetBrains Mono", monospace', size: 10 },
-            callback: (v) => formatCompact(v),
+            // Compact labels collapse to the same "1.3k" when prices sit close together; then show coins.
+            callback: (v, i, ticks) => (ticks.length > 1 && ticks.at(-1).value - ticks[0].value < Math.abs(v) * 0.3 ? formatCoins(v) : formatCompact(v)),
           },
         },
       },
