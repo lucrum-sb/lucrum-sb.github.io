@@ -354,10 +354,11 @@ function renderModel(predict, historyMeta) {
     </div>
     <p class="dim" style="font-size:0.8rem;margin:0.9rem 0 0">
       Every curve starts at the last price. It bends only where a shape beat a flat line on this
-      item's own history, or where a calendar event is modelled to move it – most bazaar prices
-      are sticky enough that "it stays here" is the honest forecast. Confidence falls when history
-      is thin relative to the horizon, when the price jumps a lot, or when an unfitted event
-      effect bends the curve materially.
+      item's own history – most bazaar prices are sticky enough that "it stays here" is the honest
+      forecast. A calendar event widens the band on the side it is expected to push, without moving
+      the line: measured event effects have not yet beaten noise. Confidence falls when history is
+      thin relative to the horizon, when the price jumps a lot, or when an unfitted event effect is
+      large.
     </p>`;
 }
 
