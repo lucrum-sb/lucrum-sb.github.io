@@ -246,3 +246,21 @@ mountThemeToggle();
 mountSearch();
 // Watchlist alerts run on every page, so a rule set on /alerts/ fires wherever the viewer is.
 startWatchlist();
+
+// Phones show each table row as a card (css/main.css); the cell labels come from the column headers,
+// so any table that appears on the page is labelled here rather than in every renderer.
+function labelTable(table) {
+  const heads = [...table.querySelectorAll('thead th')].map((th) => th.textContent.replace(/[↑↓]/g, '').trim());
+  if (!heads.length) return;
+  for (const tr of table.querySelectorAll('tbody tr')) {
+    [...tr.children].forEach((td, i) => { if (heads[i] && !td.dataset.label) td.dataset.label = heads[i]; });
+  }
+}
+new MutationObserver((records) => {
+  for (const r of records) {
+    const root = r.target.closest ? r.target.closest('table.ledger') || r.target : null;
+    const tables = root && root.matches && root.matches('table.ledger') ? [root] : [...(r.target.querySelectorAll ? r.target.querySelectorAll('table.ledger') : [])];
+    tables.forEach(labelTable);
+  }
+}).observe(document.body, { childList: true, subtree: true });
+document.querySelectorAll('table.ledger').forEach(labelTable);

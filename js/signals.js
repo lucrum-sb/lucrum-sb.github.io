@@ -273,7 +273,7 @@ function renderTable() {
 
   tableSlot.innerHTML = `
     <div class="table-wrap"><div class="table-scroll">
-      <table class="ledger"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
+      <table class="ledger dense"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
     </div></div>
     <p class="dimmer" style="font-size:0.75rem;margin-top:0.6rem">
       Score ranks within this type only – a craft's 0.70 and a position's 0.65 are not comparable.

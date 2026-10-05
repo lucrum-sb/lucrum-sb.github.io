@@ -158,7 +158,7 @@ code, kbd {
 }
 
 .topbar-inner {
-  max-width: 1180px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 0 1.25rem;
   height: 52px;
@@ -282,7 +282,7 @@ code, kbd {
 .icon-btn svg { width: 15px; height: 15px; display: block; }
 
 .shell {
-  max-width: 1180px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 0 1.25rem;
 }
@@ -452,7 +452,17 @@ main {
   background: var(--surface);
 }
 
-.table-scroll { overflow-x: auto; }
+.table-scroll { overflow-x: auto; scrollbar-width: thin; }
+
+/* When a table is still wider than the page, keep the item column in view while scrolling. */
+.table-scroll table.ledger th:first-child,
+.table-scroll table.ledger td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+.table-scroll table.ledger tbody tr:hover td:first-child { background: var(--surface-2); }
 
 table.ledger {
   width: 100%;
@@ -521,6 +531,12 @@ table.ledger td.key { color: var(--text); }
 table.ledger.dense { font-size: 0.8rem; }
 table.ledger.dense th { padding: 0.5rem 0.4rem; letter-spacing: 0.04em; }
 table.ledger.dense td { padding: 0.5rem 0.4rem; }
+
+@media (max-width: 1500px) and (min-width: 721px) {
+  table.ledger.dense { font-size: 0.74rem; }
+  table.ledger.dense th { padding: 0.45rem 0.28rem; letter-spacing: 0; font-size: 0.62rem; }
+  table.ledger.dense td { padding: 0.45rem 0.28rem; }
+}
 
 table.ledger td a { color: var(--text); }
 table.ledger td a:hover { color: var(--accent); }
@@ -718,7 +734,25 @@ tr.detail-row[hidden] { display: none; }
 /* --- Mobile ---------------------------------------------------------------------------------- */
 
 @media (max-width: 720px) {
-  .topbar-inner { gap: 0.75rem; padding: 0 0.9rem; }
+  /* The nav wraps onto its own row instead of scrolling sideways where nobody sees the rest. */
+  .topbar-inner { flex-wrap: wrap; height: auto; padding-top: 0.4rem; padding-bottom: 0.4rem; row-gap: 0.2rem; }
+  .topnav { order: 3; flex: 1 1 100%; flex-wrap: wrap; overflow-x: visible; }
+
+  /* Tables become one card per row, each cell labelled from its column header (js/shell.js). */
+  .table-scroll { overflow-x: visible; }
+  table.ledger, table.ledger tbody, table.ledger tr, table.ledger td { display: block; width: 100%; }
+  table.ledger thead { display: none; }
+  table.ledger tbody tr { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--line); }
+  table.ledger tbody tr:last-child { border-bottom: none; }
+  table.ledger td, table.ledger.dense td { padding: 0.2rem 0; border: 0; display: flex; justify-content: space-between; gap: 1rem; text-align: right; }
+  table.ledger td::before { content: attr(data-label); color: var(--text-3); font-family: var(--mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; text-align: left; flex: none; padding-top: 0.15rem; }
+  table.ledger td.key { display: block; text-align: left; font-weight: 600; padding-bottom: 0.35rem; }
+  table.ledger td.key::before { content: none; }
+  table.ledger td:not([data-label])::before { content: none; }
+  table.ledger td[colspan] { display: block; text-align: left; }
+  table.ledger td:first-child { position: static; }
+  #table-slot table.ledger td.key, #plan-slot table.ledger td.key { min-width: 0; max-width: none; }
+  .topbar-inner { gap: 0.75rem; padding-left: 0.9rem; padding-right: 0.9rem; }
   .search-trigger .kbd,
   .search-trigger .search-label { display: none; }
   .search-trigger { padding: 0.35rem 0.5rem; }

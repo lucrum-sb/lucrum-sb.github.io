@@ -52,13 +52,26 @@
           <h1 id="item-title">&nbsp;</h1>
           <span class="item-id num" id="item-id"></span>
         </div>
-        <div class="tabs" id="range-tabs" role="group" aria-label="Chart range">
-          <button class="tab" data-range="1h" type="button" aria-pressed="false">1h</button>
-          <button class="tab" data-range="1d" type="button" aria-pressed="false">1d</button>
-          <button class="tab" data-range="1w" type="button" aria-pressed="true">1w</button>
-          <button class="tab" data-range="1M" type="button" aria-pressed="false">1M</button>
-          <button class="tab" data-range="3M" type="button" aria-pressed="false">3M</button>
-          <button class="tab" data-range="6M" type="button" aria-pressed="false">6M</button>
+        <div class="item-controls">
+          <div class="tab-group">
+            <span class="label">History</span>
+            <div class="tabs" id="range-tabs" role="group" aria-label="History shown">
+              <button class="tab" data-range="1h" type="button" aria-pressed="false">1h</button>
+              <button class="tab" data-range="1d" type="button" aria-pressed="false">1d</button>
+              <button class="tab" data-range="1w" type="button" aria-pressed="true">1w</button>
+              <button class="tab" data-range="1M" type="button" aria-pressed="false">1M</button>
+              <button class="tab" data-range="3M" type="button" aria-pressed="false">3M</button>
+              <button class="tab" data-range="6M" type="button" aria-pressed="false">6M</button>
+            </div>
+          </div>
+          <div class="tab-group">
+            <span class="label">Forecast</span>
+            <div class="tabs" id="forecast-tabs" role="group" aria-label="Forecast length">
+              <button class="tab" data-fc="1w" type="button" aria-pressed="true">2 days</button>
+              <button class="tab" data-fc="1M" type="button" aria-pressed="false">5 days</button>
+              <button class="tab" data-fc="3M" type="button" aria-pressed="false">4 weeks</button>
+            </div>
+          </div>
         </div>
       </div>
 

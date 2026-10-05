@@ -2,10 +2,9 @@
 // GET /history and GET /predict, plus every field the snapshot, the prediction, the signal list
 // and the backtest have to say about one product.
 //
-// No chart maths beyond drawing and windowing (CLAUDE.md hard rule 2). The window itself is
-// docs/CONTRACTS.md's chart window contract, taken from the worker's own `futureMs` rather than
-// guessed from the data extent: futureMs is 30% of the range span, so the "now" line lands at
-// exactly 70% of the plot width for every range.
+// No chart maths beyond drawing and windowing (CLAUDE.md hard rule 2). History range and forecast
+// length are separate choices, the window is zoomable and pannable, and a click on the past draws a
+// backtest from there – see docs/CONTRACTS.md's chart window contract for what differs from the mod.
 import { callWorker, WorkerUnreachableError } from './api.js';
 import { renderErrorState, classifyFailure, failureText } from './errors.js';
 import { loadSnapshot } from './catalog.js';
@@ -28,6 +27,7 @@ const eventsBody = document.getElementById('events-body');
 const signalsSlot = document.getElementById('item-signals');
 const backtestSlot = document.getElementById('backtest-slot');
 const rangeTabs = document.querySelectorAll('#range-tabs .tab');
+const forecastTabs = document.querySelectorAll('#forecast-tabs .tab');
 
 /** Fallback window widths when /predict is unavailable and cannot supply futureMs. */
 const RANGE_MS = {
@@ -64,6 +64,14 @@ function backtestHorizonMs(r) {
 // products (a D1 write-cap decision, not a bug), so it is empty for most of the catalogue. 1w reads
 // bars_1h, which covers every product – the default range has to be one that actually has data.
 let range = '1w';
+// How far ahead the forecast looks, as its own choice: it names one of the worker's model tiers
+// (1w = 2 days, 1M = 5 days, 3M = 4 weeks). Changing the history shown never changes the forecast,
+// and a longer forecast is a different, separately validated model, not the same line stretched.
+// Longer than 4 weeks is not offered: stored history is too short to validate it.
+let fc = '1w';
+let view = null; // { min, max } – the visible time window once the reader has zoomed or panned
+let backtestAt = null; // { from, body } – a replay drawn on the chart
+let interactAbort = null; // removes the previous chart's pointer handlers on a rebuild
 let chart = null;
 let lastPayload = null; // { history, predict } – kept so a theme flip can repaint without refetching
 let backtestHasRun = false; // flips the button's copy from "Run a … backtest" to "Run again"
@@ -137,7 +145,7 @@ function glowPlugin() {
 // that counts up or down to re-render on a tick, and this plugin instance is baked into the
 // chart at construction time, so the only way for the marker to keep moving after that is for the
 // draw call to read a value the ticker below can update in place.
-function chromePlugin(nowRef, events) {
+function chromePlugin(nowRef, events, btRef) {
   // Theme colours read once per chart build, not on every frame: getComputedStyle is the most
   // expensive call in this plugin and the marker redraws every second. A theme flip rebuilds the
   // chart (buildChart), so the cache cannot go stale.
@@ -162,6 +170,21 @@ function chromePlugin(nowRef, events) {
         ctx.fillStyle = colours.accent;
         ctx.font = '10px "JetBrains Mono", monospace';
         ctx.fillText('now', nowPx + 4, chartArea.bottom - 4);
+      }
+
+      if (btRef.from !== null) {
+        const bx = x.getPixelForValue(btRef.from);
+        if (bx >= chartArea.left && bx <= chartArea.right) {
+          ctx.setLineDash([2, 3]);
+          ctx.strokeStyle = colours.accent;
+          ctx.beginPath();
+          ctx.moveTo(bx, chartArea.top);
+          ctx.lineTo(bx, chartArea.bottom);
+          ctx.stroke();
+          ctx.fillStyle = colours.accent;
+          ctx.font = '10px "JetBrains Mono", monospace';
+          ctx.fillText('replay from here', bx + 4, chartArea.top + 11);
+        }
       }
 
       ctx.setLineDash([3, 3]);
@@ -190,13 +213,150 @@ function tickFormat(ts, spanMs) {
   return d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
 }
 
+// One tooltip row per line, each taken at the point nearest the pointer on that line's own time
+// axis. The built-in 'index' mode pairs points by array position, which is wrong the moment lines
+// (history, forecast, a replay) do not share their time points.
+if (window.Chart && Chart.Interaction) {
+  Chart.Interaction.modes.lucrumX = (c, e) => {
+    const xv = c.scales.x.getValueForPixel(e.x);
+    const items = [];
+    c.data.datasets.forEach((ds, di) => {
+      const pts = ds.data;
+      if (!c.isDatasetVisible(di) || !pts.length) return;
+      let best = 0;
+      let bd = Infinity;
+      for (let i = 0; i < pts.length; i++) {
+        const d = Math.abs(pts[i].x - xv);
+        if (d < bd) { bd = d; best = i; }
+      }
+      const tol = pts.length > 1 ? 1.5 * Math.abs(pts[1].x - pts[0].x) : Infinity;
+      if (bd <= tol) items.push({ element: c.getDatasetMeta(di).data[best], datasetIndex: di, index: best });
+    });
+    return items;
+  };
+}
+
+/** Fits the price axis to what is in the visible time window, so zooming in shows the detail. */
+function fitY() {
+  const sx = chart.options.scales.x;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const ds of chart.data.datasets) {
+    if (ds.label.includes('range band')) continue;
+    for (const p of ds.data) {
+      if (p.x < sx.min || p.x > sx.max || !Number.isFinite(p.y)) continue;
+      if (p.y < lo) lo = p.y;
+      if (p.y > hi) hi = p.y;
+    }
+  }
+  const sy = chart.options.scales.y;
+  if (lo === Infinity) { delete sy.min; delete sy.max; return; }
+  const pad = (hi - lo || hi * 0.02 || 1) * 0.06;
+  sy.min = lo - pad;
+  sy.max = hi + pad;
+}
+
+/** Wheel / pinch zooms, drag pans, double-click resets, and a click (no drag) on the past runs a
+ * backtest from there. Pointer events cover mouse, pen and touch; the canvas leaves vertical
+ * swipes to the page (touch-action: pan-y) so scrolling past the chart still works on a phone. */
+function attachInteractions(canvas, limits, home) {
+  if (interactAbort) interactAbort.abort();
+  interactAbort = new AbortController();
+  const opts = { signal: interactAbort.signal };
+  const pts = new Map();
+  let drag = null;
+  let pinch = null;
+
+  const current = () => ({ min: chart.options.scales.x.min, max: chart.options.scales.x.max });
+  const clamp = (min, max) => {
+    const span = Math.min(Math.max(max - min, limits.minSpan), limits.max - limits.min);
+    let lo = min;
+    if (lo < limits.min) lo = limits.min;
+    if (lo + span > limits.max) lo = limits.max - span;
+    return { min: lo, max: lo + span };
+  };
+  const apply = (v) => {
+    view = v;
+    chart.options.scales.x.min = v.min;
+    chart.options.scales.x.max = v.max;
+    fitY();
+    chart.update('none');
+  };
+  const zoomAround = (t, factor, base) => {
+    const lo = t - (t - base.min) * factor;
+    apply(clamp(lo, lo + (base.max - base.min) * factor));
+  };
+  const timeAt = (clientX) => chart.scales.x.getValueForPixel(clientX - canvas.getBoundingClientRect().left);
+  const msPerPx = (v) => (v.max - v.min) / chart.chartArea.width;
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const v = current();
+    if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      const d = (e.deltaX || e.deltaY) * msPerPx(v);
+      apply(clamp(v.min + d, v.max + d));
+      return;
+    }
+    zoomAround(timeAt(e.clientX), Math.exp(Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 100) * 0.002), v);
+  }, { ...opts, passive: false });
+
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX });
+    if (pts.size === 1) {
+      drag = { x0: e.clientX, base: current(), moved: false };
+      pinch = null;
+    } else if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      pinch = { d0: Math.abs(a.x - b.x) || 1, base: current(), t: timeAt((a.x + b.x) / 2) };
+      drag = null;
+    }
+  }, opts);
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX });
+    if (pinch && pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      zoomAround(pinch.t, pinch.d0 / (Math.abs(a.x - b.x) || 1), pinch.base);
+    } else if (drag) {
+      const dx = e.clientX - drag.x0;
+      if (Math.abs(dx) > 5) drag.moved = true;
+      if (drag.moved) {
+        const d = -dx * msPerPx(drag.base);
+        apply(clamp(drag.base.min + d, drag.base.max + d));
+      }
+    }
+  }, opts);
+
+  const end = (e) => {
+    const wasClick = drag && !drag.moved && pts.size === 1 && e.type === 'pointerup';
+    pts.delete(e.pointerId);
+    if (wasClick) onChartClick(timeAt(e.clientX));
+    if (pts.size === 0) { drag = null; pinch = null; }
+  };
+  canvas.addEventListener('pointerup', end, opts);
+  canvas.addEventListener('pointercancel', end, opts);
+
+  canvas.addEventListener('dblclick', () => {
+    view = null;
+    apply(home);
+    view = null;
+  }, opts);
+}
+
 function buildChart({ history, predict }) {
   const bars = history.bars || [];
   const now = predict ? predict.now : Date.now();
-  const futureMs = predict ? predict.futureMs : RANGE_MS[range] * 0.3;
-  const spanMs = futureMs / 0.3;
-  const windowStart = now - spanMs * 0.7;
+  const futureMs = predict ? predict.futureMs : backtestHorizonMs(fc);
+  const windowStart = now - rangeWindowMs(range);
   const windowEnd = now + futureMs;
+  const limits = {
+    min: bars.length ? Math.min(bars[0].t, windowStart) : windowStart,
+    max: windowEnd,
+    minSpan: RANGE_BAR_MS[range] * 8,
+  };
+  const visibleSpan = () => (view ? view.max - view.min : windowEnd - windowStart);
 
   const buy = cssVar('--buy');
   const sell = cssVar('--sell');
@@ -242,6 +402,26 @@ function buildChart({ history, predict }) {
     );
   }
 
+  const bt = backtestAt;
+  if (bt) {
+    // The replayed forecast, dotted, from the clicked moment – next to the real lines that followed
+    // it, and the flat "price stays put" baseline it is scored against.
+    const b = bt.body;
+    const atb = (p) => b.from + p.t;
+    const flat = (y) => [{ x: b.from, y }, { x: b.from + b.futureMs, y }];
+    const dot = { pointRadius: 0, borderWidth: 1.75, borderDash: [2, 3], tension: 0.15 };
+    datasets.push(
+      { label: 'Backtest buy band hi', data: b.predicted.buy.map((p) => ({ x: atb(p), y: p.hi })), ...hl },
+      { label: 'Backtest buy band lo', data: b.predicted.buy.map((p) => ({ x: atb(p), y: p.lo })), ...hl, fill: '-1', backgroundColor: withAlpha(buy, 0.07) },
+      { label: 'Backtest sell band hi', data: b.predicted.sell.map((p) => ({ x: atb(p), y: p.hi })), ...hl },
+      { label: 'Backtest sell band lo', data: b.predicted.sell.map((p) => ({ x: atb(p), y: p.lo })), ...hl, fill: '-1', backgroundColor: withAlpha(sell, 0.07) },
+      { label: 'Backtest buy forecast', data: b.predicted.buy.map((p) => ({ x: atb(p), y: p.p })), borderColor: buy, ...dot },
+      { label: 'Backtest sell forecast', data: b.predicted.sell.map((p) => ({ x: atb(p), y: p.p })), borderColor: sell, ...dot },
+      { label: 'Flat baseline buy', data: flat(b.naive.buy), borderColor: textDim, pointRadius: 0, borderWidth: 1, borderDash: [1, 3] },
+      { label: 'Flat baseline sell', data: flat(b.naive.sell), borderColor: textDim, pointRadius: 0, borderWidth: 1, borderDash: [1, 3] },
+    );
+  }
+
   const events = predict ? (predict.events || []) : [];
 
   // buildTime anchors the ticker below: it advances `now` by wall-clock time elapsed since this
@@ -254,6 +434,7 @@ function buildChart({ history, predict }) {
   // nearest point on every line, so without this a past date also listed the first forecast point.
   let hoverX = null;
 
+  const btRef = { from: bt ? bt.body.from : null };
   if (chart) chart.destroy();
   if (nowTicker) { clearInterval(nowTicker); nowTicker = null; }
   const canvas = document.getElementById('chart');
@@ -268,7 +449,7 @@ function buildChart({ history, predict }) {
       normalized: true,
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false, axis: 'x' },
+      interaction: { mode: 'lucrumX', intersect: false },
       onHover: (event) => { hoverX = event.x; },
       plugins: {
         legend: { display: false },
@@ -285,26 +466,29 @@ function buildChart({ history, predict }) {
             title: (items) => (items[0] ? formatLocalTime(items[0].parsed.x) : ''),
             label: (item) => `${item.dataset.label}: ${formatCoins(item.parsed.y)}`,
           },
-          // History lines only up to "now", forecast lines only after it, and never the band edges.
+          // History lines only up to "now", forecast lines only after it, a replay only after the
+          // moment it started from, and never the band edges.
           filter: (item) => {
-            if (item.dataset.label.includes('band')) return false;
+            const label = item.dataset.label;
+            if (label.includes('band')) return false;
             const at = hoverX === null ? null : item.chart.scales.x.getValueForPixel(hoverX);
             if (at === null || at === undefined) return true;
-            return item.dataset.label.includes('forecast') ? at >= nowRef.value : at <= nowRef.value;
+            if (label.startsWith('Backtest') || label.startsWith('Flat baseline')) return btRef.from !== null && at >= btRef.from;
+            return label.includes('forecast') ? at >= nowRef.value : at <= nowRef.value;
           },
         },
       },
       scales: {
         x: {
           type: 'linear',
-          min: windowStart,
-          max: windowEnd,
+          min: view ? view.min : windowStart,
+          max: view ? view.max : windowEnd,
           grid: { color: line, drawTicks: false },
           border: { color: line },
           ticks: {
             color: textDim, maxTicksLimit: 8, autoSkip: true,
             font: { family: '"JetBrains Mono", monospace', size: 10 },
-            callback: (v) => tickFormat(v, spanMs),
+            callback: (v) => tickFormat(v, visibleSpan()),
           },
         },
         y: {
@@ -318,8 +502,11 @@ function buildChart({ history, predict }) {
         },
       },
     },
-    plugins: [glowPlugin(), chromePlugin(nowRef, events)],
+    plugins: [glowPlugin(), chromePlugin(nowRef, events, btRef)],
   });
+  fitY();
+  chart.update('none');
+  attachInteractions(canvas, limits, { min: windowStart, max: windowEnd });
 
   // Retick the "now" marker every second so it keeps advancing through the fixed window instead
   // of freezing at page-load time (CLAUDE.md rule 12). This is purely local redrawing – no worker
@@ -456,7 +643,7 @@ async function renderItemSignals() {
 // have the button and its own result contradicting each other. A fixed "24 hours" was wrong for
 // every range but 1d, since the horizon is a property of the selected range, not a constant.
 function backtestButtonLabel(again) {
-  const horizon = formatDuration(backtestHorizonMs(range));
+  const horizon = formatDuration(backtestHorizonMs(fc));
   return again ? `Run again – ${horizon}` : `Run a ${horizon} backtest`;
 }
 
@@ -503,42 +690,70 @@ function renderBacktest(body) {
 function wireBacktest() {
   const btn = document.getElementById('backtest-btn');
   if (!btn) return;
-  btn.addEventListener('click', async () => {
-    btn.disabled = true;
-    btn.textContent = 'Running…';
-    // Anchored to the horizon, not a fixed 24 hours, and deliberately as recent as the data
-    // allows. Two opposing constraints meet here: the worker replays forward from `from` by
-    // futureMs and can only score that against bars that already exist, so `from` has to sit at
-    // least a horizon in the past or the replay runs off the end of history and is silently scored
-    // on only the part that has happened – but it also needs quant/predict.js's MIN_BARS of
-    // history *before* `from`, and only ~7 days of hourly bars are stored so far. Anchoring a
-    // whole window back satisfies the first and fails the second on 1w. One horizon back, plus two
-    // closed bars of margin so the last scored bar is definitely written, satisfies both and
-    // scores the model on its most recent completed window rather than a stale one.
-    const from = Date.now() - backtestHorizonMs(range) - 2 * RANGE_BAR_MS[range];
-    // range, not a hardcoded '1d': '1d' resolves to the bars_5m tier, which ingest/cron.js only
-    // writes for the ~100 highest-volume products (a deliberate D1 write-cap decision), so a
-    // literal '1d' here made the backtest fail for roughly 1,900 of ~2,000 products. Using the
-    // chart's own selected range makes the backtest describe the same window the user is already
-    // looking at, and since the chart defaults to '1w' (bars_1h, populated for every product) the
-    // default path works everywhere.
-    try {
-      const { status, body } = await callWorker(`/backtest?item=${encodeURIComponent(itemId)}&from=${from}&range=${range}`);
-      if (status !== 200) {
-        renderErrorState(backtestSlot, classifyFailure(null, body) || 'unknown', { item: itemId, range });
-        return;
-      }
-      renderBacktest(body);
-    } catch (err) {
-      renderErrorState(backtestSlot, 'unreachable');
-    }
+  btn.addEventListener('click', () => {
+    // Anchored to the horizon, and deliberately as recent as the data allows. The worker replays
+    // forward from `from` by futureMs and can only score that against bars that exist, so `from`
+    // sits at least a horizon in the past; two closed bars of margin make the last scored bar real.
+    runBacktestAt(Date.now() - backtestHorizonMs(fc) - 2 * RANGE_BAR_MS[fc]);
   });
+}
+
+/** Replays the forecast from `t` (a moment the reader clicked, or the latest scoreable one) and
+ * draws it on the chart. `range=fc` names the same model tier the live forecast uses. */
+async function runBacktestAt(t) {
+  const note = document.getElementById('bt-note');
+  const btn = document.getElementById('backtest-btn');
+  const from = Math.floor(t / RANGE_BAR_MS[fc]) * RANGE_BAR_MS[fc]; // bar-aligned, so nearby clicks share a cached run
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (note) note.textContent = `Replaying the forecast from ${formatLocalTime(from)}…`;
+  try {
+    const { status, body } = await callWorker(`/backtest?item=${encodeURIComponent(itemId)}&from=${from}&range=${fc}`);
+    if (status !== 200) {
+      const kind = classifyFailure(null, body) || 'unknown';
+      if (note) note.textContent = failureText(kind, { item: itemId, range: fc });
+      return;
+    }
+    backtestAt = { from: body.from, body };
+    if (lastPayload) buildChart(lastPayload);
+    const m = body.metrics || {};
+    if (note) {
+      note.innerHTML = `Replay from <strong>${esc(formatLocalTime(body.from))}</strong> over ${esc(formatDuration(body.futureMs))}: ${
+        m.skill === null || m.skill === undefined ? 'skill undefined' : `skill <span class="${signClass(m.skill)}">${esc(formatPctSigned(m.skill))}</span> vs staying flat`
+      }. <button class="btn btn-sm" id="bt-clear" type="button">Clear</button>`;
+      document.getElementById('bt-clear').addEventListener('click', clearBacktest);
+    }
+    renderBacktest(body);
+  } catch (err) {
+    if (note) note.textContent = failureText('unreachable');
+  } finally {
+    const b2 = document.getElementById('backtest-btn');
+    if (b2) { b2.disabled = false; b2.textContent = backtestButtonLabel(backtestHasRun); }
+  }
+}
+
+function clearBacktest() {
+  backtestAt = null;
+  const note = document.getElementById('bt-note');
+  if (note) note.textContent = '';
+  if (lastPayload) buildChart(lastPayload);
+}
+
+/** A click on the chart: only the past can be replayed. */
+function onChartClick(t) {
+  const note = document.getElementById('bt-note');
+  if (!lastPayload || !lastPayload.predict) return;
+  if (t >= lastPayload.predict.now) {
+    if (note) note.textContent = 'Click a point in the past – a replay needs what happened after it.';
+    return;
+  }
+  runBacktestAt(t);
 }
 
 /* --- Load ---------------------------------------------------------------------------------------- */
 
 function setRangePressed() {
   rangeTabs.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.range === range)));
+  forecastTabs.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.fc === fc)));
 }
 
 function chartShell() {
@@ -550,7 +765,9 @@ function chartShell() {
       <span><span class="swatch dashed"></span>Forecast</span>
       <span><span class="swatch" style="background:var(--line-strong)"></span>Middle half of outcomes</span>
       <span><span class="swatch" style="background:var(--line)"></span>High–low range of each bar</span>
-    </div>`;
+    </div>
+    <p class="chart-hint">Scroll or pinch to zoom, drag to pan, double-click to reset. Click any point in the past to replay the forecast from there.</p>
+    <p class="bt-note" id="bt-note"></p>`;
 }
 
 async function loadChart() {
@@ -563,7 +780,7 @@ async function loadChart() {
   try {
     [historyRes, predictRes] = await Promise.all([
       callWorker(`/history?item=${encodeURIComponent(itemId)}&range=${range}`),
-      callWorker(`/predict?item=${encodeURIComponent(itemId)}&range=${range}`),
+      callWorker(`/predict?item=${encodeURIComponent(itemId)}&range=${fc}`),
     ]);
   } catch (err) {
     if (err instanceof WorkerUnreachableError) {
@@ -615,7 +832,7 @@ async function loadChart() {
     renderEvents(predict);
   } else {
     const kind = classifyFailure(null, predictRes.body) || 'unknown';
-    modelBody.innerHTML = `<p class="dim" style="margin:0">${esc(failureText(kind, { item: itemId, range }))}</p>`;
+    modelBody.innerHTML = `<p class="dim" style="margin:0">${esc(failureText(kind, { item: itemId, range: fc }))}</p>`;
     eventsBody.innerHTML = '<p class="dim" style="margin:0">Event marks come with the prediction, which is unavailable for this range.</p>';
   }
 }
@@ -623,6 +840,17 @@ async function loadChart() {
 rangeTabs.forEach((btn) => {
   btn.addEventListener('click', () => {
     range = btn.dataset.range;
+    view = null;
+    backtestAt = null;
+    setRangePressed();
+    loadChart();
+  });
+});
+forecastTabs.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    fc = btn.dataset.fc;
+    view = null;
+    backtestAt = null;
     setRangePressed();
     refreshBacktestButtonLabel();
     loadChart();
