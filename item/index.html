@@ -79,6 +79,23 @@
               <button class="tab" data-line="jittery" type="button" aria-pressed="true">Jittery</button>
             </div>
           </div>
+          <div class="tab-group">
+            <span class="label">Model</span>
+            <div class="tabs" id="model-tabs" role="group" aria-label="Forecast model">
+              <button class="tab" data-model="pred-9" type="button" aria-pressed="true" title="pred-8 plus upcoming events (newest)">pred-9</button>
+              <button class="tab" data-model="pred-8" type="button" aria-pressed="false" title="learned from every item's history, no events">pred-8</button>
+              <button class="tab" data-model="pred-7" type="button" aria-pressed="false" title="this item's own history only">pred-7</button>
+            </div>
+          </div>
+          <div class="tab-group">
+            <label class="label" for="compare-model">Compare</label>
+            <select class="input input-sm" id="compare-model">
+              <option value="">None</option>
+              <option value="pred-9">pred-9</option>
+              <option value="pred-8">pred-8</option>
+              <option value="pred-7">pred-7</option>
+            </select>
+          </div>
         </div>
       </div>
 

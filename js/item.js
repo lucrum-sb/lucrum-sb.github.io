@@ -29,6 +29,8 @@ const backtestSlot = document.getElementById('backtest-slot');
 const rangeTabs = document.querySelectorAll('#range-tabs .tab');
 const forecastTabs = document.querySelectorAll('#forecast-tabs .tab');
 const lineTabs = document.querySelectorAll('#line-tabs .tab');
+const modelTabs = document.querySelectorAll('#model-tabs .tab');
+const compareSelect = document.getElementById('compare-model');
 
 /** Fallback window widths when /predict is unavailable and cannot supply futureMs. */
 const RANGE_MS = {
@@ -73,6 +75,10 @@ let fc = '1w';
 // 'jittery' draws one erratic path per side; 'smooth' draws the average line (what the backtest scores).
 const LINE_KEY = 'lucrum.forecastLine';
 let lineMode = (() => { try { return localStorage.getItem(LINE_KEY) === 'smooth' ? 'smooth' : 'jittery'; } catch (err) { return 'jittery'; } })();
+// Which forecast model draws the chart and the replays (worker quant/models.js), and which one, if
+// any, is drawn faintly beside it for comparison.
+let model = 'pred-9';
+let compareWith = '';
 let view = null; // { min, max } – the visible time window once the reader has zoomed or panned
 let backtestAt = null; // { from, body } – a replay drawn on the chart
 let interactAbort = null; // removes the previous chart's pointer handlers on a rebuild
@@ -362,7 +368,7 @@ function attachInteractions(canvas, limits, home) {
   }, opts);
 }
 
-function buildChart({ history, predict }) {
+function buildChart({ history, predict, compare }) {
   const bars = history.bars || [];
   const now = predict ? predict.now : Date.now();
   const futureMs = predict ? predict.futureMs : backtestHorizonMs(fc);
@@ -418,6 +424,21 @@ function buildChart({ history, predict }) {
     } else {
       pushPaths(datasets, predict.paths, predict.buy, predict.sell, at, buy, sell, '');
     }
+  }
+
+  // Another model's average line, faint, for comparison – from the same moment, same horizon.
+  const legendCompare = document.getElementById('legend-compare');
+  if (legendCompare) {
+    legendCompare.hidden = !(compare && compare.buy);
+    if (compare) document.getElementById('legend-compare-name').textContent = compare.modelVersion;
+  }
+  if (compare && compare.buy) {
+    const at = (p) => compare.now + p.t;
+    const faint = { borderWidth: 1.25, pointRadius: 0, tension: 0.15, borderDash: [2, 2] };
+    datasets.push(
+      { label: `${compare.modelVersion} buy forecast`, data: compare.buy.map((p) => ({ x: at(p), y: p.p })), borderColor: withAlpha(buy, 0.45), ...faint },
+      { label: `${compare.modelVersion} sell forecast`, data: compare.sell.map((p) => ({ x: at(p), y: p.p })), borderColor: withAlpha(sell, 0.45), ...faint },
+    );
   }
 
   const bt = backtestAt;
@@ -743,7 +764,7 @@ async function runBacktestAt(t) {
   if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
   if (note) note.textContent = `Replaying the forecast from ${formatLocalTime(from)}…`;
   try {
-    const { status, body } = await callWorker(`/backtest?item=${encodeURIComponent(itemId)}&from=${from}&to=${to}&range=${fc}`);
+    const { status, body } = await callWorker(`/backtest?item=${encodeURIComponent(itemId)}&from=${from}&to=${to}&range=${fc}&model=${model}`);
     if (status !== 200) {
       const kind = classifyFailure(null, body) || 'unknown';
       if (note) note.textContent = failureText(kind, { item: itemId, range: fc });
@@ -800,10 +821,22 @@ function chartShell() {
       <span class="sell-c"><span class="swatch" style="background:var(--sell)"></span>Sell side</span>
       <span><span class="swatch dashed"></span>Forecast</span>
       <span><span class="swatch" style="background:var(--line-strong)"></span>Middle half of outcomes</span>
+      <span id="legend-compare" hidden><span class="swatch dashed"></span><span id="legend-compare-name"></span> forecast, faint</span>
       <span><span class="swatch" style="background:var(--line)"></span>High–low range of each bar</span>
     </div>
     <p class="chart-hint">Scroll or pinch to zoom, drag to pan, double-click to reset. Click any point in the past to replay the forecast from there.</p>
     <p class="bt-note" id="bt-note"></p>`;
+}
+
+/** The comparison model's forecast, or null when none is picked or it is the one already drawn. */
+async function loadCompare() {
+  if (!compareWith || compareWith === model) return null;
+  try {
+    const res = await callWorker(`/predict?item=${encodeURIComponent(itemId)}&range=${fc}&model=${compareWith}`);
+    return res.status === 200 ? res.body : null;
+  } catch (err) {
+    return null;
+  }
 }
 
 async function loadChart() {
@@ -816,7 +849,7 @@ async function loadChart() {
   try {
     [historyRes, predictRes] = await Promise.all([
       callWorker(`/history?item=${encodeURIComponent(itemId)}&range=${range}`),
-      callWorker(`/predict?item=${encodeURIComponent(itemId)}&range=${fc}`),
+      callWorker(`/predict?item=${encodeURIComponent(itemId)}&range=${fc}&model=${model}`),
     ]);
   } catch (err) {
     if (err instanceof WorkerUnreachableError) {
@@ -860,7 +893,7 @@ async function loadChart() {
     caveat.textContent = `Stored history for ${itemLabel(itemId)} begins ${formatLocalTime(history.coverage.from)} – the range before that is blank, not flat.`;
     chartCard.insertBefore(caveat, chartCard.firstChild);
   }
-  lastPayload = { history: history || { bars: [] }, predict };
+  lastPayload = { history: history || { bars: [] }, predict, compare: await loadCompare() };
   buildChart(lastPayload);
 
   if (predict) {
@@ -892,6 +925,25 @@ forecastTabs.forEach((btn) => {
     loadChart();
   });
 });
+// Model choice refetches the forecast (and drops a replay made with the old one); the comparison
+// line is fetched on its own and only redraws.
+const setModelPressed = () => modelTabs.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.model === model)));
+modelTabs.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.model === model) return;
+    model = btn.dataset.model;
+    backtestAt = null;
+    setModelPressed();
+    loadChart();
+  });
+});
+compareSelect.addEventListener('change', async () => {
+  compareWith = compareSelect.value;
+  if (!lastPayload) return;
+  lastPayload.compare = await loadCompare();
+  buildChart(lastPayload);
+});
+
 // Smooth or jittery forecast line: a redraw of what is already loaded, remembered for next time.
 const setLinePressed = () => lineTabs.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.line === lineMode)));
 setLinePressed();
