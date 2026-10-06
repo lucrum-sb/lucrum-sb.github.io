@@ -28,7 +28,7 @@ function card(m) {
         <h2>${esc(m.id)}</h2>
         ${m.isDefault ? '<span class="chip chip-accent">Default</span>' : ''}
       </div>
-      <p class="dimmer model-meta">Released ${esc(day(Date.parse(m.released)))}${t ? ` · ${formatInt(t.inputs)} inputs · ${formatInt(t.trees)} trees` : ' · no learned trees'}</p>
+      <p class="dimmer model-meta">Released ${esc(day(Date.parse(m.released)))}${t ? ` · ${formatInt(t.inputs)} inputs · ${formatInt(t.trees)} trees · ${formatCompact(t.parameters)} parameters` : ' · no learned trees'}</p>
       <p class="model-summary">${esc(m.summary)}</p>
       <dl class="model-notes">
         <dt>Better at</dt><dd>${esc(m.strengths)}</dd>
@@ -98,12 +98,78 @@ function trainingTable(models) {
     ['Inputs', (t) => formatInt(t.inputs)],
     ['Trees', (t) => `${formatInt(t.trees)}${t.sets > 1 ? ` in ${t.sets} sets` : ''}`],
     ['Look-aheads learned', (t) => formatInt(t.lookaheads)],
+    ['Days of history', (t) => formatInt(historyDays(t))],
+    ['Examples per item', (t) => formatCompact(t.examples / t.items)],
+    ['Held-out examples', (t) => (t.testExamples ? formatCompact(t.testExamples) : '–')],
+    ['Parameters', (t) => formatCompact(t.parameters), 'a threshold per split, a value per leaf'],
+    ['Decision splits', (t) => formatCompact(t.splits)],
+    ['Leaves', (t) => formatCompact(t.leaves)],
+    ['Deepest path', (t) => `${formatInt(t.deepest)} splits`],
+    ['Average path', (t) => `${t.meanDepth} splits`, 'root to leaf'],
+    ['Decisions per forecast', (t) => formatCompact(t.decisionsPerForecast), 'both sides, every look-ahead'],
+    ['Model file', (t) => formatBytes(t.bytes)],
+    ['Learning rate', (t) => (t.params ? String(t.params.learningRate) : '–')],
+    ['Leaves per tree', (t) => (t.params ? formatInt(t.params.numLeaves) : '–')],
+    ['Fewest examples per leaf', (t) => (t.params ? formatInt(t.params.minDataInLeaf) : '–')],
+    ['Weight against pred-7', (t) => (t.blend !== null && t.blend !== undefined ? formatPct(t.blend, 0) : '–'), 'where both forecast'],
+    ['Training time', (t) => (t.trainSeconds ? duration(t.trainSeconds) : '–'), 'recorded from pred-11 on'],
   ];
   return `
     <div class="table-wrap"><div class="table-scroll"><table class="ledger dense">
       <thead><tr><th></th>${models.map((m) => `<th class="num">${esc(m.id)}</th>`).join('')}</tr></thead>
-      <tbody>${rows.map(([label, f]) => `<tr><td class="key">${label}</td>${models.map((m) => `<td class="num">${m.training ? f(m.training) : '<span class="dimmer">own history only</span>'}</td>`).join('')}</tr>`).join('')}</tbody>
+      <tbody>${rows.map(([label, f, note]) => `<tr><td class="key">${label}${note ? `<span class="dimmer row-note">${esc(note)}</span>` : ''}</td>${models.map((m) => `<td class="num">${m.training ? f(m.training) : '<span class="dimmer">own history only</span>'}</td>`).join('')}</tr>`).join('')}</tbody>
     </table></div></div>`;
+}
+
+const historyDays = (t) => Math.round((t.to - t.from) / 86_400_000);
+const formatBytes = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.round(n / 1e3)} KB`);
+const duration = (sec) => (sec >= 3600 ? `${Math.floor(sec / 3600)}h ${Math.round((sec % 3600) / 60)}m` : `${Math.round(sec / 60)}m`);
+
+/** The default model in a handful of big numbers. */
+function numbers(m) {
+  const t = m.training;
+  if (!t) return '';
+  const tile = (label, value, note) => `<div class="stat"><span class="label">${esc(label)}</span><span class="value lg">${value}</span><p class="note">${esc(note)}</p></div>`;
+  return `
+    <div class="grid grid-3">
+      ${tile('Parameters', formatCompact(t.parameters), `${formatCompact(t.splits)} splits, ${formatCompact(t.leaves)} leaves`)}
+      ${tile('Training examples', formatCompact(t.examples), `from ${formatInt(t.items)} items over ${formatInt(historyDays(t))} days`)}
+      ${tile('Decisions per forecast', formatCompact(t.decisionsPerForecast), `${formatInt(t.trees)} trees at ${formatInt(t.lookaheads)} look-aheads, both sides`)}
+      ${tile('Inputs', formatInt(t.inputs), 'price, book, flow, calendar, mayor')}
+      ${tile('Deepest decision path', formatInt(t.deepest), `splits – ${t.meanDepth} on average`)}
+      ${tile('Model file', formatBytes(t.bytes), 'shipped inside the worker, run per request')}
+    </div>`;
+}
+
+// Plain-English names for the inputs a model splits on most; anything else shows its code.
+const INPUT_NAMES = {
+  h: 'how far ahead', lprice: 'price level', spread: 'buy–sell spread', spgap: 'spread vs usual', act: 'trading activity',
+  flowimb: 'buy vs sell flow', bookimb: 'order book lean', side: 'buy or sell side', tod: 'time of day ahead', tod0: 'time of day now',
+  dow: 'day of week', seasw: 'SkyBlock season', revDn: 'bounce after a drop', revUp: 'fall after a spike', nDn: 'drops seen', nUp: 'spikes seen',
+  mrBeta: 'pull back to normal', rng12: '12h range', vol12: '12h volatility', vol84: '3.5-day volatility', z1: 'last hour vs normal',
+  termAge: 'mayor term so far', termLeft: 'mayor term left', evPress: 'event pressure ahead', evDelta: 'event change ahead',
+  holT: 'holiday ahead', schT: 'school break ahead', hol0: 'holiday now', sch0: 'school break now', nextSign: 'next mayor', elNear: 'election close',
+  dmax84: 'off the 3.5-day high', dmin84: 'off the 3.5-day low', ogap36: 'other side vs 36h', omom6: 'other side 6h move',
+};
+const inputName = (n) => INPUT_NAMES[n] ?? (/^gap(\d+)$/.test(n) ? `vs ${n.slice(3)}h average` : /^mom(\d+)$/.test(n) ? `${n.slice(3)}h move` : n);
+
+/** For each learned model, the inputs its trees split on most. */
+function leansOn(models) {
+  const learned = models.filter((m) => m.training && m.training.topInputs && m.training.topInputs.length);
+  return `
+    <div class="grid grid-3">${learned.map((m) => {
+      const top = m.training.topInputs;
+      const max = top[0].share;
+      return `<div>
+        <p class="label" style="margin:0 0 0.5rem;font-family:var(--mono)">${esc(m.id)}</p>
+        <div class="factor-bars">${top.map((x) => `
+          <span title="${esc(x.name)}">${esc(inputName(x.name))}</span>
+          <span class="bar"><span style="width:${((100 * x.share) / max).toFixed(0)}%"></span></span>
+          <span class="num dim">${formatPct(x.share, 1)}</span>`).join('')}
+        </div>
+      </div>`;
+    }).join('')}</div>
+    <p class="dimmer" style="font-size:0.75rem;margin:0.8rem 0 0">Share of every decision split in the model that tests that input. Hover a name for its code.</p>`;
 }
 
 function liveSection(live, at) {
@@ -163,6 +229,8 @@ function render(d) {
   body.innerHTML = `
     <div class="grid model-grid">${d.models.map(card).join('')}</div>
 
+    ${(() => { const def = d.models.find((m) => m.isDefault); return def && def.training ? `<h2 class="section-heading">${esc(def.id)} by the numbers</h2><div class="card">${numbers(def)}</div>` : ''; })()}
+
     <h2 class="section-heading">Head to head</h2>
     <div class="card">
       <p class="dim" style="margin:0 0 0.9rem;max-width:80ch">
@@ -186,6 +254,9 @@ function render(d) {
 
     <h2 class="section-heading">Training</h2>
     <div class="card">${trainingTable(d.models)}</div>
+
+    <h2 class="section-heading">What each model leans on most</h2>
+    <div class="card">${leansOn(d.models)}</div>
 
     <h2 class="section-heading">Live check</h2>
     <div class="card">${liveSection(d.live, d.liveComputedAt)}</div>`;
