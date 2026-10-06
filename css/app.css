@@ -618,3 +618,7 @@ table.ledger td.strong { color: var(--text); font-weight: 600; }
 .chip-accent { border-color: var(--accent); color: var(--accent); }
 table.ledger.bench td.best { color: var(--accent); font-weight: 600; }
 table.ledger .row-note { display: block; font-size: 0.7rem; margin-top: 0.1rem; }
+
+/* --- Collect page (js/collect.js) -------------------------------------------------------------- */
+.field { display: flex; flex-direction: column; gap: 0.3rem; }
+.field .label { color: var(--text-3); font-family: var(--mono); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; }

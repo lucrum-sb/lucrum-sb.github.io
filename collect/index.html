@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Collect – Lucrum</title>
+  <meta name="robots" content="noindex" />
+  <meta name="description" content="Lucrum – bazaar intelligence for Hypixel SkyBlock." />
+  <!-- Theme resolution must run before css/main.css paints, per docs/BRAND.md's theme section –
+       see js/theme.js's top-of-file comment for why this is a plain script, not a module. -->
+  <script src="../js/theme.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=JetBrains+Mono:wght@400..700&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="../css/main.css" />
+  <link rel="stylesheet" href="../css/app.css" />
+
+</head>
+<body data-base="../">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <a class="wordmark" href="../index.html"><span class="tick">&#9642;</span> Lucrum</a>
+      <nav class="topnav" aria-label="Primary">
+        <a href="../market/">Market</a>
+        <a href="../signals/">Signals</a>
+        <a href="../plan/">Plan</a>
+        <a href="../alerts/">Alerts</a>
+        <a href="../calendar/">Calendar</a>
+        <a href="../account/">Portfolio</a>
+        <a href="../status/">Status</a>
+        <a href="../models/">Models</a>
+      </nav>
+      <div class="topbar-actions">
+        <button class="search-trigger" id="search-trigger" type="button" aria-label="Find a bazaar item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+          <span class="search-label">Find an item</span>
+          <span class="kbd">&#8984;K</span>
+        </button>
+        <button class="icon-btn" id="theme-toggle" type="button"></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="shell">
+    <main>
+      <div class="page-head">
+        <div>
+          <h1>Collect price history</h1>
+          <p class="sub">
+            For Lucas's own devices only. Pulls a year of bazaar history from CoflNet through this
+            device's connection, about 1.4 requests a second, and hands it to the worker for the
+            model pipeline. Each device takes the next item from one shared queue, so leaving it
+            open on several devices splits the work. Keep the tab open; it stops when you close it
+            and another device picks up the item.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="grid grid-3">
+          <label class="field"><span class="label">Collect key</span><input class="input" id="c-key" type="password" autocomplete="off" /></label>
+          <label class="field"><span class="label">This device's name</span><input class="input" id="c-device" type="text" /></label>
+          <div class="field"><span class="label">&nbsp;</span><button class="btn" id="c-start" type="button">Start</button></div>
+        </div>
+        <div class="grid grid-4" style="margin-top:1.1rem">
+          <div class="stat"><span class="label">All devices</span><span class="value" id="c-all">–</span><p class="note" id="c-all-note"></p></div>
+          <div class="stat"><span class="label">This device</span><span class="value" id="c-mine">0</span><p class="note">items finished</p></div>
+          <div class="stat"><span class="label">Now</span><span class="value" id="c-now" style="font-size:0.95rem">idle</span><p class="note" id="c-now-note"></p></div>
+          <div class="stat"><span class="label">Pace</span><span class="value" id="c-rate">–</span><p class="note">requests a minute from this device</p></div>
+        </div>
+        <p class="dimmer" id="c-log" style="font-size:0.75rem;margin:0.9rem 0 0;white-space:pre-line"></p>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <span>Bazaar intelligence for Hypixel SkyBlock</span>
+      <a href="../link/">Link your account</a>
+      <a href="../status/">Worker status</a>
+      <a href="https://seyvault.github.io" rel="noopener">SeyVault</a>
+    </footer>
+  </div>
+
+  <script type="module" src="../js/collect.js"></script>
+</body>
+</html>
