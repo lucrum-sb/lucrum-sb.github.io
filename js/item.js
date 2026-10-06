@@ -77,7 +77,7 @@ const LINE_KEY = 'lucrum.forecastLine';
 let lineMode = (() => { try { return localStorage.getItem(LINE_KEY) === 'smooth' ? 'smooth' : 'jittery'; } catch (err) { return 'jittery'; } })();
 // Which forecast model draws the chart and the replays (worker quant/models.js), and which one, if
 // any, is drawn faintly beside it for comparison.
-let model = 'pred-9';
+let model = 'pred-10';
 let compareWith = '';
 let view = null; // { min, max } – the visible time window once the reader has zoomed or panned
 let backtestAt = null; // { from, body } – a replay drawn on the chart
@@ -449,6 +449,15 @@ function buildChart({ history, predict, compare }) {
     const atb = (p) => b.from + p.t;
     const flat = (y) => [{ x: b.from, y }, { x: b.from + b.futureMs, y }];
     const dot = { pointRadius: 0, borderWidth: 1.75, borderDash: [2, 3], tension: 0.15 };
+    if (bt.compare && bt.compare.predicted) {
+      const c = bt.compare;
+      const atc = (p) => c.from + p.t;
+      const faint = { borderWidth: 1.25, pointRadius: 0, tension: 0.15, borderDash: [1, 2] };
+      datasets.push(
+        { label: `Backtest ${c.modelVersion} buy forecast`, data: c.predicted.buy.map((p) => ({ x: atc(p), y: p.p })), borderColor: withAlpha(buy, 0.45), ...faint },
+        { label: `Backtest ${c.modelVersion} sell forecast`, data: c.predicted.sell.map((p) => ({ x: atc(p), y: p.p })), borderColor: withAlpha(sell, 0.45), ...faint },
+      );
+    }
     datasets.push(
       { label: 'Backtest buy band hi', data: b.predicted.buy.map((p) => ({ x: atb(p), y: p.hi })), ...hl },
       { label: 'Backtest buy band lo', data: b.predicted.buy.map((p) => ({ x: atb(p), y: p.lo })), ...hl, fill: '-1', backgroundColor: withAlpha(buy, 0.07) },
@@ -770,13 +779,22 @@ async function runBacktestAt(t) {
       if (note) note.textContent = failureText(kind, { item: itemId, range: fc });
       return;
     }
-    backtestAt = { from: body.from, body };
+    // The Compare model replayed from the same moment, drawn faintly beside it and scored too.
+    let other = null;
+    if (compareWith && compareWith !== model) {
+      try {
+        const res = await callWorker(`/backtest?item=${encodeURIComponent(itemId)}&from=${from}&to=${to}&range=${fc}&model=${compareWith}`);
+        if (res.status === 200) other = res.body;
+      } catch (err) { other = null; }
+    }
+    backtestAt = { from: body.from, body, compare: other };
     if (lastPayload) buildChart(lastPayload);
     const m = body.metrics || {};
+    const om = other ? other.metrics || {} : null;
     if (note) {
       note.innerHTML = `Replay from <strong>${esc(formatLocalTime(body.from))}</strong> over ${esc(formatDuration(body.futureMs))}: ${
-        m.skill === null || m.skill === undefined ? 'skill undefined' : `the average line scored <span class="${signClass(m.skill)}">${esc(formatPctSigned(m.skill))}</span> vs staying flat`
-      }. <button class="btn btn-sm" id="bt-clear" type="button">Clear</button>`;
+        m.skill === null || m.skill === undefined ? 'skill undefined' : `${esc(body.modelVersion || model)}'s average line scored <span class="${signClass(m.skill)}">${esc(formatPctSigned(m.skill))}</span> vs staying flat`
+      }${om && om.skill !== null && om.skill !== undefined ? `, ${esc(other.modelVersion)} <span class="${signClass(om.skill)}">${esc(formatPctSigned(om.skill))}</span>` : ''}. <button class="btn btn-sm" id="bt-clear" type="button">Clear</button>`;
       document.getElementById('bt-clear').addEventListener('click', clearBacktest);
     }
     renderBacktest(body);
@@ -942,6 +960,7 @@ compareSelect.addEventListener('change', async () => {
   if (!lastPayload) return;
   lastPayload.compare = await loadCompare();
   buildChart(lastPayload);
+  if (backtestAt) runBacktestAt(backtestAt.from);
 });
 
 // Smooth or jittery forecast line: a redraw of what is already loaded, remembered for next time.
