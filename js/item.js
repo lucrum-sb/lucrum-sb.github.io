@@ -29,7 +29,7 @@ const backtestSlot = document.getElementById('backtest-slot');
 const rangeTabs = document.querySelectorAll('#range-tabs .tab');
 const forecastTabs = document.querySelectorAll('#forecast-tabs .tab');
 const lineTabs = document.querySelectorAll('#line-tabs .tab');
-const modelTabs = document.querySelectorAll('#model-tabs .tab');
+const modelTabsEl = document.getElementById('model-tabs');
 const compareSelect = document.getElementById('compare-model');
 
 /** Fallback window widths when /predict is unavailable and cannot supply futureMs. */
@@ -945,16 +945,39 @@ forecastTabs.forEach((btn) => {
 });
 // Model choice refetches the forecast (and drops a replay made with the old one); the comparison
 // line is fetched on its own and only redraws.
-const setModelPressed = () => modelTabs.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.model === model)));
-modelTabs.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    if (btn.dataset.model === model) return;
-    model = btn.dataset.model;
-    backtestAt = null;
-    setModelPressed();
-    loadChart();
-  });
+const setModelPressed = () => modelTabsEl.querySelectorAll('.tab').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.model === model)));
+modelTabsEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab');
+  if (!btn || btn.dataset.model === model) return;
+  model = btn.dataset.model;
+  backtestAt = null;
+  setModelPressed();
+  loadChart();
 });
+
+// The model list comes from the worker (GET /models), so a model published to R2 shows up here
+// without a site change; the buttons in the HTML are the fallback until it answers.
+async function loadModelChoices() {
+  let body;
+  try {
+    const res = await callWorker('/models');
+    if (res.status !== 200 || !Array.isArray(res.body?.models) || !res.body.models.length) return;
+    body = res.body;
+  } catch (err) {
+    return;
+  }
+  const list = body.models;
+  const short = (m) => (m.isDefault ? 'the default – ' : '') + (m.summary || '').split(/[.:]/)[0].toLowerCase();
+  modelTabsEl.innerHTML = list.map((m) => `<button class="tab" data-model="${esc(m.id)}" type="button" aria-pressed="false" title="${esc(short(m))}">${esc(m.id)}</button>`).join('');
+  compareSelect.innerHTML = '<option value="">None</option>' + list.map((m) => `<option value="${esc(m.id)}">${esc(m.id)}</option>`).join('');
+  compareSelect.value = list.some((m) => m.id === compareWith) ? compareWith : '';
+  if (!list.some((m) => m.id === model)) {
+    model = body.default;
+    loadChart();
+  }
+  setModelPressed();
+}
+loadModelChoices();
 compareSelect.addEventListener('change', async () => {
   compareWith = compareSelect.value;
   if (!lastPayload) return;

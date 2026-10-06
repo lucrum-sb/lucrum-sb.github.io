@@ -13,9 +13,12 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-/** One colour per model, newest brightest. */
-function modelColours() {
-  return { 'pred-10': cssVar('--accent'), 'pred-9': cssVar('--buy'), 'pred-8': cssVar('--sell'), 'pred-7': cssVar('--text-3') };
+/** One colour per model, newest brightest – by position, so a newly published model gets one too. */
+function modelColours(ids = payload ? payload.models.map((m) => m.id) : []) {
+  const palette = [cssVar('--accent'), cssVar('--buy'), cssVar('--sell'), cssVar('--text-2'), cssVar('--text-3')];
+  const out = {};
+  ids.forEach((id, k) => { out[id] = id === 'pred-7' ? cssVar('--text-3') : palette[Math.min(k, palette.length - 1)]; });
+  return out;
 }
 
 const day = (ts) => (ts ? new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '–');
