@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Link your account – Lucrum</title>
+  <title>Models – Lucrum</title>
   <meta name="description" content="Lucrum – bazaar intelligence for Hypixel SkyBlock." />
   <!-- Theme resolution must run before css/main.css paints, per docs/BRAND.md's theme section –
        see js/theme.js's top-of-file comment for why this is a plain script, not a module. -->
@@ -14,9 +14,9 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=JetBrains+Mono:wght@400..700&display=swap"
     rel="stylesheet"
   />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="../css/main.css" />
   <link rel="stylesheet" href="../css/app.css" />
-  <link rel="stylesheet" href="../css/link.css" />
 
 </head>
 <body data-base="../">
@@ -31,7 +31,7 @@
         <a href="../calendar/">Calendar</a>
         <a href="../account/">Portfolio</a>
         <a href="../status/">Status</a>
-        <a href="../models/">Models</a>
+        <a href="../models/" aria-current="page">Models</a>
       </nav>
       <div class="topbar-actions">
         <button class="search-trigger" id="search-trigger" type="button" aria-label="Find a bazaar item">
@@ -48,51 +48,16 @@
     <main>
       <div class="page-head">
         <div>
-          <h1>Link your account</h1>
+          <h1>Forecast models</h1>
           <p class="sub">
-            This confirms the code <code>/lucrum link</code> shows in game against your Minecraft
-            identity, so the mod's positions and this site's profile refer to the same account.
+            Every model the worker can run, what it reads, how it was trained, and how they all did on
+            the same held-out month – forecasts none of them had seen. Item pages let you switch
+            between them and draw one against another, live or in a replay.
           </p>
         </div>
       </div>
 
-      <div class="card link-card" id="link-card">
-        <div class="link-status">
-          <span class="status-dot" id="status-dot"></span>
-          <span id="status-text">Checking link status&hellip;</span>
-        </div>
-
-        <div id="signin-step" class="link-step" hidden>
-          <h3>Sign in with MC-ID</h3>
-          <p class="dim">Sign-in redirects to the same MC-ID identity provider SeyVault uses.</p>
-          <button class="btn btn-primary" id="signin-btn" type="button">Sign in with MC-ID</button>
-          <p class="error-text" id="signin-error" hidden></p>
-        </div>
-
-        <div id="code-step" class="link-step" hidden>
-          <h3>Confirm your code</h3>
-          <p class="dim">Enter the code <code>/lucrum link</code> showed in game.</p>
-          <form id="code-form">
-            <input
-              type="text"
-              id="code-input"
-              class="input code-input"
-              placeholder="XXXX-XXXX"
-              maxlength="9"
-              autocomplete="off"
-              autocapitalize="characters"
-            />
-            <button class="btn btn-primary" type="submit">Link account</button>
-          </form>
-          <p class="error-text" id="code-error" hidden></p>
-        </div>
-
-        <div id="linked-step" class="link-step" hidden>
-          <h3>Linked</h3>
-          <p class="dim">Account <span class="num" id="linked-uuid"></span> is now linked.</p>
-          <a class="btn" href="../account/">Open your portfolio</a>
-        </div>
-      </div>
+      <div id="models-body"><p class="loading-state">Loading the models&hellip;</p></div>
     </main>
 
     <footer class="site-footer">
@@ -103,6 +68,6 @@
     </footer>
   </div>
 
-  <script type="module" src="../js/link.js"></script>
+  <script type="module" src="../js/models.js"></script>
 </body>
 </html>

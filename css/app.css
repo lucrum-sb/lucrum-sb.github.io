@@ -602,3 +602,19 @@ table.ledger td.strong { color: var(--text); font-weight: 600; }
 }
 .why-line .watch-link { color: var(--text-3); }
 .why-line .watch-link:hover { color: var(--accent); }
+
+/* --- Models page (js/models.js) ---------------------------------------------------------------- */
+.model-grid { grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+.model-card { display: flex; flex-direction: column; }
+.model-card.is-default { border-color: var(--accent); box-shadow: var(--glow-accent); }
+.model-card-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.model-card-head h2 { margin: 0; font-family: var(--mono); font-size: 1.25rem; }
+.model-meta { font-size: 0.75rem; margin: 0.3rem 0 0.7rem; font-family: var(--mono); }
+.model-summary { font-size: 0.875rem; margin: 0 0 0.8rem; }
+.model-notes { margin: auto 0 0; font-size: 0.8rem; display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 0.7rem; }
+.model-notes dt { color: var(--text-3); font-family: var(--mono); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 0.1rem; }
+.model-notes dd { margin: 0; color: var(--text-2); }
+.chip { font-family: var(--mono); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; padding: 0.15rem 0.45rem; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); color: var(--text-2); }
+.chip-accent { border-color: var(--accent); color: var(--accent); }
+table.ledger.bench td.best { color: var(--accent); font-weight: 600; }
+table.ledger .row-note { display: block; font-size: 0.7rem; margin-top: 0.1rem; }
