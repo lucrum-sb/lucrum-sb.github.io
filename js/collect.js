@@ -121,4 +121,7 @@ $('c-start').addEventListener('click', () => {
   $('c-start').textContent = 'Stop';
   run().catch((err) => { log(String(err.message || err)); running = false; $('c-start').textContent = 'Start'; });
 });
-if ($('c-key').value) status({ 'x-collect-key': $('c-key').value }).catch(() => {});
+// Every device's progress, refreshed live whether or not this one is collecting.
+const refreshAll = () => { const key = $('c-key').value.trim(); if (key) status({ 'x-collect-key': key }).catch(() => {}); };
+refreshAll();
+setInterval(refreshAll, 20_000);
