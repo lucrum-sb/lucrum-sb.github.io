@@ -9,7 +9,6 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const FINE = 18 * HOUR;
 const WEEK = 7 * DAY;
-const DAYS = 365;
 const GAP_MS = 1000 / 1.4; // ~84 a minute, under CoflNet's 100 per minute per connection
 
 const $ = (id) => document.getElementById(id);
@@ -25,12 +24,21 @@ const log = (line) => { const el = $('c-log'); el.textContent = `${new Date().to
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (ms) => new Date(ms).toISOString().slice(0, 19);
 
-function windows(endMs) {
+/** The same windows tools/sim/sim.py asks for: 18h ones (5-minute points) for the last `fineDays`
+ * and back to a week boundary, weekly ones (2-hour points) for the rest of `days`, on a fixed grid. */
+function windows(endMs, fineDays, days) {
   const fineEnd = Math.floor(endMs / FINE) * FINE;
-  const coarseEnd = Math.floor(fineEnd / WEEK) * WEEK;
-  const out = [[coarseEnd, endMs]];
-  for (let t = coarseEnd; t > endMs - DAYS * DAY; t -= WEEK) out.push([t - WEEK, t]);
+  const coarseEnd = Math.floor((fineEnd - fineDays * DAY) / WEEK) * WEEK;
+  const out = [];
+  if (fineDays === 0) out.push([coarseEnd, endMs]);
+  for (let t = fineDays ? fineEnd : coarseEnd; t > coarseEnd; t -= FINE) out.push([t - FINE, t]);
+  for (let t = coarseEnd; t > endMs - days * DAY; t -= WEEK) out.push([t - WEEK, t]);
   return out;
+}
+
+async function gzipJson(value) {
+  const stream = new Blob([JSON.stringify(value)]).stream().pipeThrough(new CompressionStream('gzip'));
+  return new Response(stream).blob();
 }
 
 async function cofl(item, start, end) {
@@ -70,7 +78,7 @@ async function run() {
     if (code !== 200) { log(code === 403 ? 'The collect key is wrong.' : `The worker said ${code}.`); break; }
     if (!body.item) { log('The queue is empty – everything is collected.'); break; }
     const item = body.item;
-    const ws = windows(Math.floor((Date.now() - 2 * HOUR) / HOUR) * HOUR);
+    const ws = windows(Math.floor((Date.now() - 2 * HOUR) / HOUR) * HOUR, body.fineDays ?? 0, body.days ?? 365);
     const points = [];
     for (let i = 0; i < ws.length && running; i++) {
       $('c-now').textContent = item;
@@ -92,7 +100,8 @@ async function run() {
       points.push(...(await cofl(item, holes[i][0], holes[i][1])));
     }
     if (!running) { log(`Stopped during ${item}; it goes back in the queue in 15 minutes.`); break; }
-    const res = await callWorker(`/collect/done?item=${encodeURIComponent(item)}`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(points) });
+    $('c-now-note').textContent = 'uploading';
+    const res = await callWorker(`/collect/done?item=${encodeURIComponent(item)}`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json', 'x-body-gzip': '1' }, body: await gzipJson(points) });
     if (res.status !== 200) { log(`Upload of ${item} failed (${res.status}); it goes back in the queue.`); continue; }
     mine += 1;
     $('c-mine').textContent = String(mine);
