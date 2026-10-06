@@ -557,7 +557,7 @@ function renderModel(predict, historyMeta) {
   const basisText = (b) => {
     if (!b) return '–';
     if (b.shape === 'flat') return 'flat – nothing beat a flat line on this item\'s past';
-    if (b.shape === 'learned') return `learned from every item's history, blended with this item's own – ${formatPct(b.improvement, 1)} less error than a flat line over 5 days on a month it never saw`;
+    if (b.shape === 'learned') return `learned from every item's history, blended with this item's own${b.events ? ', reading the upcoming events that touch it' : ''} – ${formatPct(b.improvement, 1)} less error than a flat line over 5 days on a month it never saw`;
     const what = b.shape === 'reversion' ? 'reversion to the recent median' : 'fitted cycles and drift';
     return `${what} at ${formatPct(b.weight, 0)} – ${formatPct(b.improvement, 0)} less error than flat over ${b.origins} past windows`;
   };
@@ -591,8 +591,10 @@ function renderModel(predict, historyMeta) {
       neither model beats "it stays here". The shaded band is the middle half of what followed
       similar moments: about half of prices should land inside it.
       Items with under about four days of history fall back to their own-history model.
-      Calendar events are marked but do not move the line or the band: their measured effects have
-      not yet beaten noise. Confidence falls when history is thin relative to the horizon or when
+      When a calendar event touches this item inside the forecast (a Mining Fiesta for gemstones, a
+      Fishing Festival for sea creature drops…), a version of the model that also reads when events
+      start and end takes over for those hours – it learned their effect from past events, and on a
+      month it never saw it did slightly better there and slightly worse elsewhere. Confidence falls when history is thin relative to the horizon or when
       the price jumps a lot.
     </p>`;
 }
