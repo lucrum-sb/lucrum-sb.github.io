@@ -157,7 +157,8 @@ function drawChart(cmp, ids) {
 function render(d) {
   const ids = d.models.map((m) => m.id);
   const cmp = d.comparison;
-  const h2h = cmp.pred10VsPred9;
+  // headToHead from tools/sim/compare.py (the first two models it was given); older files had pred10VsPred9.
+  const h2h = cmp.headToHead ?? (cmp.pred10VsPred9 && { a: 'pred-10', b: 'pred-9', ...cmp.pred10VsPred9 });
   const tie = h2h && h2h.lo90 < 0 && h2h.hi90 > 0;
   body.innerHTML = `
     <div class="grid model-grid">${d.models.map(card).join('')}</div>
@@ -170,7 +171,7 @@ function render(d) {
         marked.
       </p>
       ${benchmarks(cmp, ids)}
-      ${h2h ? `<p style="margin:0.9rem 0 0;max-width:80ch">pred-10 against pred-9 over all ${formatCompact(cmp.rows)} shared forecasts: ${formatPctSigned(h2h.diff, 2)} of skill
+      ${h2h ? `<p style="margin:0.9rem 0 0;max-width:80ch">${esc(h2h.a)} against ${esc(h2h.b)} over all ${formatCompact(cmp.rows)} shared forecasts: ${formatPctSigned(h2h.diff, 2)} of skill
         (90% range ${formatPctSigned(h2h.lo90, 2)} to ${formatPctSigned(h2h.hi90, 2)}, resampled by day over ${h2h.days} days)${tie ? ' – a tie overall; they differ by how far ahead you look and by item, below.' : '.'}</p>` : ''}
     </div>
 
