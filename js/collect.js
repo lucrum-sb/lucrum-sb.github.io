@@ -74,9 +74,9 @@ async function run() {
   const headers = { 'x-collect-key': key };
   try { wake = await navigator.wakeLock?.request('screen'); } catch { wake = null; }
   while (running) {
-    const { status: code, body } = await callWorker(`/collect/next?device=${encodeURIComponent(device)}`, { headers });
+    const { status: code, body } = await callWorker(`/collect/next?v=2&device=${encodeURIComponent(device)}`, { headers });
     if (code !== 200) { log(code === 403 ? 'The collect key is wrong.' : `The worker said ${code}.`); break; }
-    if (!body.item) { log('The queue is empty – everything is collected.'); break; }
+    if (!body.item) { log(body.reason || 'The queue is empty – everything is collected.'); break; }
     const item = body.item;
     const ws = windows(Math.floor((Date.now() - 2 * HOUR) / HOUR) * HOUR, body.fineDays ?? 0, body.days ?? 365);
     const points = [];
