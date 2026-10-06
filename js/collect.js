@@ -79,6 +79,18 @@ async function run() {
       while (recent.length && recent[0] < Date.now() - 60_000) recent.shift();
       $('c-rate').textContent = String(recent.length);
     }
+    // CoflNet's 2-hour summaries have holes (a day or a week with one point) where its 5-minute data
+    // is complete: every gap over 6 hours is asked for again in 18h windows, as tools/sim/sim.py does.
+    const times = points.map((p) => Date.parse(String(p.timestamp).endsWith('Z') ? p.timestamp : `${p.timestamp}Z`)).filter(Number.isFinite).sort((x, y) => x - y);
+    const holes = [];
+    for (let i = 1; i < times.length; i++) {
+      if (times[i] - times[i - 1] <= 6 * HOUR) continue;
+      for (let w = Math.floor(times[i - 1] / FINE) * FINE; w < times[i]; w += FINE) holes.push([w, w + FINE]);
+    }
+    for (let i = 0; i < holes.length && running; i++) {
+      $('c-now-note').textContent = `filling gaps ${i + 1}/${holes.length}`;
+      points.push(...(await cofl(item, holes[i][0], holes[i][1])));
+    }
     if (!running) { log(`Stopped during ${item}; it goes back in the queue in 15 minutes.`); break; }
     const res = await callWorker(`/collect/done?item=${encodeURIComponent(item)}`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(points) });
     if (res.status !== 200) { log(`Upload of ${item} failed (${res.status}); it goes back in the queue.`); continue; }
