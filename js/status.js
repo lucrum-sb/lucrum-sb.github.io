@@ -53,6 +53,10 @@ function sweepCard(sweep, now) {
     return '<p class="dim" style="margin:0">No backtest sweep has run yet. The worker runs one daily over stored hourly bars.</p>';
   }
   const m = sweep.summary || {};
+  if (!m.scored && sweep.trainedTo) {
+    return `<p class="dim" style="margin:0">No out-of-sample forecasts to score yet. The sweep only scores forecasts made after the model's training data ends (${esc(formatLocalTime(sweep.trainedTo))}), plus a full ${esc(formatDuration(sweep.futureMs))} to see what happened; the first appear a few days after a retrain.</p>`;
+  }
+  const base = sweep.baseline && sweep.baseline.summary;
   const verdict = m.skill === null || m.skill === undefined
     ? 'No run had a usable baseline, so there is no skill figure.'
     : m.skill > 0
@@ -65,6 +69,7 @@ function sweepCard(sweep, now) {
   return `
     <div class="grid grid-4">
       ${stat('Skill vs flat price', formatPctSigned(m.skill, 1), signClass(m.skill), `median ${formatPctSigned(m.medianSkill, 1)}`)}
+      ${base ? stat('Previous model (pred-7)', formatPctSigned(base.skill, 1), signClass(base.skill), 'same windows, own-history model alone') : ''}
       ${stat('Direction right', formatPct(m.directionalAccuracy, 0), '', 'share of points where the forecast got the move\'s sign right')}
       ${stat('Simulated trades', formatInt(m.trades), '', m.winRate === null || m.winRate === undefined ? 'no trades taken' : `${formatPct(m.winRate, 0)} won`)}
       ${stat('Runs scored', formatInt(m.scored), '', skipped ? `skipped: ${skipped}` : `${formatInt(sweep.items)} items × ${formatInt(sweep.starts)} start points`)}
@@ -73,7 +78,7 @@ function sweepCard(sweep, now) {
     ${worst.length ? `<p class="dimmer" style="font-size:0.75rem;margin:0.5rem 0 0">Weakest items: ${worst.map((r) => `<a href="${itemHref(r.item)}">${esc(itemLabel(r.item))}</a> ${formatPctSigned(r.skill, 0)}`).join(' · ')}.</p>` : ''}
     <p class="dimmer" style="font-size:0.75rem;margin:0.5rem 0 0">
       Model ${esc(sweep.modelVersion || '–')}, ${esc(sweep.range)} horizon of ${esc(formatDuration(sweep.futureMs))},
-      start points from ${esc(formatLocalTime(sweep.window && sweep.window.from))} to ${esc(formatLocalTime(sweep.window && sweep.window.to))}.
+      only forecasts made after its training data ends, start points from ${esc(formatLocalTime(sweep.window && sweep.window.from))} to ${esc(formatLocalTime(sweep.window && sweep.window.to))}.
       Run <span data-age="${sweep.computedAt}">${esc(formatAge(sweep.computedAt, now))}</span>.
     </p>`;
 }
