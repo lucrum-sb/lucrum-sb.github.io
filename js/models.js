@@ -40,14 +40,18 @@ function card(m) {
 /** A metric row across models, the best value marked. `higher` says which way is better. */
 function metricRow(label, values, fmt, higher = true, note = '') {
   const finite = values.filter((v) => v !== null && v !== undefined);
-  const best = finite.length ? (higher ? Math.max(...finite) : Math.min(...finite)) : null;
+  // `higher` null: neither way is better (a count, or band coverage aimed at 50%), so nothing is marked.
+  const best = finite.length && higher !== null ? (higher ? Math.max(...finite) : Math.min(...finite)) : null;
   return `<tr><td class="key">${esc(label)}${note ? `<span class="dimmer row-note">${esc(note)}</span>` : ''}</td>${values.map((v) =>
     `<td class="num${v !== null && v !== undefined && v === best && finite.length > 1 ? ' best' : ''}">${v === null || v === undefined ? '–' : fmt(v)}</td>`).join('')}</tr>`;
 }
 
 function benchmarks(cmp, ids) {
   const B = cmp.buckets;
-  const get = (bucket, id, key) => B[bucket]?.[id]?.[key] ?? null;
+  // pred-7 is only scored up to 5 days, so a bucket that runs past that would compare it on easier
+  // forecasts than the others – it shows a dash there instead.
+  const PARTIAL_FOR_PRED7 = new Set(['All look-aheads', 'Top 80 traded items']);
+  const get = (bucket, id, key) => (id === 'pred-7' && PARTIAL_FOR_PRED7.has(bucket) ? null : B[bucket]?.[id]?.[key] ?? null);
   const pct = (v) => formatPctSigned(v, 1);
   const share = (v) => formatPct(v, 1);
   const skillRows = [
@@ -59,20 +63,20 @@ function benchmarks(cmp, ids) {
     ['Over 5 days', 'Over 5 days', 'up to 14 days'],
     ['Top 80 traded items', 'Top 80 traded items', 'by coins traded'],
   ];
-  const all = 'All look-aheads';
+  const all = 'Up to 5 days (all four models)';
   return `
     <div class="table-wrap"><div class="table-scroll"><table class="ledger bench">
       <thead><tr><th>Skill vs a flat price</th>${ids.map((id) => `<th class="num">${esc(id)}</th>`).join('')}</tr></thead>
       <tbody>
         ${skillRows.map(([label, bucket, note]) => metricRow(label, ids.map((id) => get(bucket, id, 'skill')), pct, true, note)).join('')}
       </tbody>
-      <thead><tr><th>Other measures (all look-aheads)</th>${ids.map(() => '<th></th>').join('')}</tr></thead>
+      <thead><tr><th>Other measures (up to 5 days, all four models)</th>${ids.map(() => '<th></th>').join('')}</tr></thead>
       <tbody>
-        ${metricRow('Direction right', ids.map((id) => get(all, id, 'direction') ?? get('Up to 5 days (all four models)', id, 'direction')), share, true, 'when it calls a move over 1%')}
-        ${metricRow('Direction right on big moves', ids.map((id) => get(all, id, 'bigDirection') ?? get('Up to 5 days (all four models)', id, 'bigDirection')), share, true, 'moves over 10%')}
-        ${metricRow('Typical error', ids.map((id) => get(all, id, 'mae') ?? get('Up to 5 days (all four models)', id, 'mae')), share, false, 'mean distance from the real price')}
-        ${metricRow('Outcomes inside the band', ids.map((id) => get(all, id, 'band')), share, null, 'aim: about 50%')}
-        ${metricRow('Forecasts scored', ids.map((id) => get(all, id, 'n') ?? get('Up to 5 days (all four models)', id, 'n')), (v) => formatCompact(v), null)}
+        ${metricRow('Direction right', ids.map((id) => get(all, id, 'direction')), share, true, 'when it calls a move over 1%')}
+        ${metricRow('Direction right on big moves', ids.map((id) => get(all, id, 'bigDirection')), share, true, 'moves over 10%')}
+        ${metricRow('Typical error', ids.map((id) => get(all, id, 'mae')), share, false, 'mean distance from the real price')}
+        ${metricRow('Outcomes inside the band', ids.map((id) => get(all, id, 'band')), share, null, 'aim: about 50% – pred-7 has no comparable band')}
+        ${metricRow('Forecasts scored', ids.map((id) => get(all, id, 'n')), (v) => formatCompact(v), null)}
       </tbody>
     </table></div></div>`;
 }
