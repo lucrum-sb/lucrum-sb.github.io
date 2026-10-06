@@ -28,6 +28,7 @@ const signalsSlot = document.getElementById('item-signals');
 const backtestSlot = document.getElementById('backtest-slot');
 const rangeTabs = document.querySelectorAll('#range-tabs .tab');
 const forecastTabs = document.querySelectorAll('#forecast-tabs .tab');
+const lineTabs = document.querySelectorAll('#line-tabs .tab');
 
 /** Fallback window widths when /predict is unavailable and cannot supply futureMs. */
 const RANGE_MS = {
@@ -69,7 +70,9 @@ let range = '1w';
 // and a longer forecast is a different, separately validated model, not the same line stretched.
 // Longer than 4 weeks is not offered: stored history is too short to validate it.
 let fc = '1w';
-let showAverage = false; // the smooth average line (what is scored); the drawn forecast is one erratic path
+// 'jittery' draws one erratic path per side; 'smooth' draws the average line (what the backtest scores).
+const LINE_KEY = 'lucrum.forecastLine';
+let lineMode = (() => { try { return localStorage.getItem(LINE_KEY) === 'smooth' ? 'smooth' : 'jittery'; } catch (err) { return 'jittery'; } })();
 let view = null; // { min, max } – the visible time window once the reader has zoomed or panned
 let backtestAt = null; // { from, body } – a replay drawn on the chart
 let interactAbort = null; // removes the previous chart's pointer handlers on a rebuild
@@ -406,12 +409,14 @@ function buildChart({ history, predict }) {
       { label: 'Sell band hi', data: predict.sell.map((p) => ({ x: at(p), y: p.hi })), ...band },
       { label: 'Sell band lo', data: predict.sell.map((p) => ({ x: at(p), y: p.lo })), ...band, fill: '-1', backgroundColor: withAlpha(sell, 0.1) },
     );
-    pushPaths(datasets, predict.paths, predict.buy, predict.sell, at, buy, sell, '');
-    if (showAverage || !(predict.paths || []).length) {
+    if (lineMode === 'smooth' || !(predict.paths || []).length) {
+      const style = { borderWidth: 1.5, pointRadius: 0, tension: 0.15, borderDash: [5, 4], glow: 10 };
       datasets.push(
-        { label: 'Buy average', data: predict.buy.map((p) => ({ x: at(p), y: p.p })), borderColor: withAlpha(buy, 0.6), borderDash: [5, 4], borderWidth: 1, pointRadius: 0, tension: 0.15 },
-        { label: 'Sell average', data: predict.sell.map((p) => ({ x: at(p), y: p.p })), borderColor: withAlpha(sell, 0.6), borderDash: [5, 4], borderWidth: 1, pointRadius: 0, tension: 0.15 },
+        { label: 'Buy forecast', data: predict.buy.map((p) => ({ x: at(p), y: p.p })), borderColor: buy, ...style },
+        { label: 'Sell forecast', data: predict.sell.map((p) => ({ x: at(p), y: p.p })), borderColor: sell, ...style },
       );
+    } else {
+      pushPaths(datasets, predict.paths, predict.buy, predict.sell, at, buy, sell, '');
     }
   }
 
@@ -428,11 +433,10 @@ function buildChart({ history, predict }) {
       { label: 'Backtest buy band lo', data: b.predicted.buy.map((p) => ({ x: atb(p), y: p.lo })), ...hl, fill: '-1', backgroundColor: withAlpha(buy, 0.07) },
       { label: 'Backtest sell band hi', data: b.predicted.sell.map((p) => ({ x: atb(p), y: p.hi })), ...hl },
       { label: 'Backtest sell band lo', data: b.predicted.sell.map((p) => ({ x: atb(p), y: p.lo })), ...hl, fill: '-1', backgroundColor: withAlpha(sell, 0.07) },
-      ...(showAverage || !(b.paths || []).length ? [
-        { label: 'Backtest buy average', data: b.predicted.buy.map((p) => ({ x: atb(p), y: p.p })), borderColor: withAlpha(buy, 0.6), ...dot, borderWidth: 1 },
-        { label: 'Backtest sell average', data: b.predicted.sell.map((p) => ({ x: atb(p), y: p.p })), borderColor: withAlpha(sell, 0.6), ...dot, borderWidth: 1 },
-      ] : []),
-      ...pathSets(b.paths, b.predicted.buy, b.predicted.sell, atb, buy, sell, 'Backtest '),
+      ...(lineMode === 'smooth' || !(b.paths || []).length ? [
+        { label: 'Backtest buy forecast', data: b.predicted.buy.map((p) => ({ x: atb(p), y: p.p })), borderColor: buy, ...dot, borderWidth: 1.5 },
+        { label: 'Backtest sell forecast', data: b.predicted.sell.map((p) => ({ x: atb(p), y: p.p })), borderColor: sell, ...dot, borderWidth: 1.5 },
+      ] : pathSets(b.paths, b.predicted.buy, b.predicted.sell, atb, buy, sell, 'Backtest ')),
       { label: 'Flat baseline buy', data: flat(b.naive.buy), borderColor: textDim, pointRadius: 0, borderWidth: 1, borderDash: [1, 3] },
       { label: 'Flat baseline sell', data: flat(b.naive.sell), borderColor: textDim, pointRadius: 0, borderWidth: 1, borderDash: [1, 3] },
     );
@@ -577,7 +581,8 @@ function renderModel(predict, historyMeta) {
     <p class="dim" style="font-size:0.8rem;margin:0.9rem 0 0">
       The drawn line is one way the price could go: a smooth average plus this item's own kind of
       jumps, replayed from its recent history. The jumps show how rough the price is; their timing is
-      not a prediction. The average under them (toggle it on the chart) is what the backtest scores.
+      not a prediction. Switch the line to Smooth to see the average under them, which is what the
+      backtest scores.
       It comes from a model trained on the history of hundreds of items at once: it weighs where the
       price sits against its levels over the last 12 hours to 30 days, recent momentum and
       volatility, the spread, the order book and weekly volume, the other side's price and the time
@@ -794,7 +799,6 @@ function chartShell() {
       <span><span class="swatch dashed"></span>Forecast</span>
       <span><span class="swatch" style="background:var(--line-strong)"></span>Middle half of outcomes</span>
       <span><span class="swatch" style="background:var(--line)"></span>High–low range of each bar</span>
-      <label class="filter-check"><input type="checkbox" id="average-toggle" ${showAverage ? 'checked' : ''}><span>Show the smooth average (what the backtest scores)</span></label>
     </div>
     <p class="chart-hint">Scroll or pinch to zoom, drag to pan, double-click to reset. Click any point in the past to replay the forecast from there.</p>
     <p class="bt-note" id="bt-note"></p>`;
@@ -856,10 +860,6 @@ async function loadChart() {
   }
   lastPayload = { history: history || { bars: [] }, predict };
   buildChart(lastPayload);
-  document.getElementById('average-toggle').addEventListener('change', (e) => {
-    showAverage = e.target.checked;
-    if (lastPayload) buildChart(lastPayload);
-  });
 
   if (predict) {
     renderModel(predict, history);
@@ -888,6 +888,17 @@ forecastTabs.forEach((btn) => {
     setRangePressed();
     refreshBacktestButtonLabel();
     loadChart();
+  });
+});
+// Smooth or jittery forecast line: a redraw of what is already loaded, remembered for next time.
+const setLinePressed = () => lineTabs.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.line === lineMode)));
+setLinePressed();
+lineTabs.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    lineMode = btn.dataset.line;
+    try { localStorage.setItem(LINE_KEY, lineMode); } catch (err) { /* no persistence available */ }
+    setLinePressed();
+    if (lastPayload) buildChart(lastPayload);
   });
 });
 
